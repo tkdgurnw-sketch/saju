@@ -1,11 +1,13 @@
 require('dotenv').config();
 const express = require('express');
 const cron = require('node-cron');
+const cors = require('cors');
 
 const visualizeRouter = require('./routes/visualize');
 const { expireOutdatedImages } = require('./jobs/expireImagesJob');
 
 const app = express();
+app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
 app.use('/api/v1/saju', visualizeRouter);
