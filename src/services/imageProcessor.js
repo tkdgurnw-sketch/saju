@@ -74,9 +74,9 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
       result[key] = null;
       continue;
     }
-    const filePath = path.join(outputDir, `${filePrefix}_${key}.webp`);
-    await fs.writeFile(filePath, buf);
-    result[key] = filePath; // 실서비스에서는 여기서 CDN URL로 치환
+    const fileName = `${filePrefix}_${key}.webp`;
+    await fs.writeFile(path.join(outputDir, fileName), buf);
+    result[key] = fileName; // 실서비스에서는 여기서 CDN URL로 치환
   }
 
   return result;

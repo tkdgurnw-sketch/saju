@@ -24,6 +24,10 @@ router.post('/visualize', async (req, res) => {
       analysisSummary, analysisDetails,
     });
 
+    // 저장된 파일명을 실제 접속 가능한 공개 URL로 조립 (index.js의 /images 정적 서빙과 짝을 이룸)
+    const baseUrl = `${req.protocol}://${req.get('host')}/images`;
+    const toUrl = (fileName) => (fileName ? `${baseUrl}/${fileName}` : null);
+
     return res.status(200).json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -41,10 +45,10 @@ router.post('/visualize', async (req, res) => {
         generated_images: {
           source_image_ref: row.source_image_url,
           cropped_images: {
-            U1: row.image_path_u1,
-            U2: row.image_path_u2,
-            U3: row.image_path_u3,
-            U4: row.image_path_u4,
+            U1: toUrl(row.image_path_u1),
+            U2: toUrl(row.image_path_u2),
+            U3: toUrl(row.image_path_u3),
+            U4: toUrl(row.image_path_u4),
           },
           recommended_default: 'U1',
         },
