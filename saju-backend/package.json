@@ -1,0 +1,24 @@
+{
+  "name": "saju-visualize-backend",
+  "version": "1.0.0",
+  "description": "사주팔자 운세 시각화 백엔드 (이미지 생성 + 크롭 + TTL 관리)",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "cron:cleanup": "node src/jobs/expireImagesJob.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.0",
+    "sharp": "^0.33.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
