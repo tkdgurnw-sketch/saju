@@ -60,10 +60,11 @@ async function processProviderResult(providerResult) {
 
 /**
  * 로컬 디스크에 저장 (실제 서비스에서는 S3 등 클라우드 스토리지 업로드 스트림으로 교체)
+ * DB에는 파일명만 저장하고, 실제 공개 URL은 라우트에서 조립한다 (index.js의 express.static과 짝을 이룸).
  * @param {Record<string, Buffer|null>} quadrants
  * @param {string} filePrefix
  * @param {string} outputDir
- * @returns {Promise<Record<string, string|null>>} 저장된 경로(U1~U4)
+ * @returns {Promise<Record<string, string|null>>} 저장된 파일명(U1~U4)
  */
 async function persistQuadrants(quadrants, filePrefix, outputDir) {
   await fs.mkdir(outputDir, { recursive: true });

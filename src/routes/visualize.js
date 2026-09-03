@@ -34,16 +34,25 @@ router.post('/visualize', async (req, res) => {
   try {
     const {
       userId, userName, style, sajuType,
+      birthDateTime, gender,
       coreElement, luckState, dailyDetail,
       analysisSummary, analysisDetails,
     } = req.body;
 
-    if (!userId || !style || !sajuType || !coreElement || !luckState || !dailyDetail) {
-      return res.status(400).json({ success: false, error: '필수 파라미터 누락' });
+    const hasBirthInfo = !!birthDateTime;
+    const hasManualInfo = !!(coreElement && luckState && dailyDetail);
+
+    if (!userId || !style || !sajuType || !(hasBirthInfo || hasManualInfo)) {
+      return res.status(400).json({
+        success: false,
+        error: '필수 파라미터 누락 (birthDateTime 또는 coreElement/luckState/dailyDetail 중 하나는 필요)',
+      });
     }
 
-    const { row, prompt } = await createSajuVisualization({
-      userId, style, sajuType, coreElement, luckState, dailyDetail,
+    const { row, prompt, sajuComputed } = await createSajuVisualization({
+      userId, style, sajuType,
+      birthDateTime, gender,
+      coreElement, luckState, dailyDetail,
       analysisSummary, analysisDetails,
     });
 
@@ -57,9 +66,9 @@ router.post('/visualize', async (req, res) => {
       data: {
         user_info: { user_id: userId, user_name: userName || null },
         saju_analysis: {
-          summary: analysisSummary,
-          core_element: coreElement,
-          ...analysisDetails,
+          summary: row.analysis_summary,
+          core_element: sajuComputed ? sajuComputed.coreElement : coreElement,
+          ...row.analysis_details,
         },
         visual_metadata: {
           selected_style: style,

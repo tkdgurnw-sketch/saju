@@ -45,24 +45,27 @@ const DAILY_DETAIL = {
  * @param {Object} params
  * @param {'ORIENTAL'|'MINIMAL'|'3D'} params.style
  * @param {string} params.coreElement   - 원국 오행 (木/火/土/金/水)
- * @param {string} params.luckState     - 대운/월운 상태 키
+ * @param {string} params.luckState     - 대운/월운 상태 키 (길운/흉운)
+ * @param {string} [params.season]      - 계절 키 (봄/여름/가을/겨울), 있으면 길흉과 함께 조명 묘사에 반영
  * @param {string} params.dailyDetail   - 일운 디테일 키
  * @returns {{ prompt: string, contentDescription: string }}
  */
-function buildSajuPrompt({ style, coreElement, luckState, dailyDetail }) {
+function buildSajuPrompt({ style, coreElement, luckState, season, dailyDetail }) {
   const styleFn = STYLE_TEMPLATES[style];
   if (!styleFn) {
     throw new Error(`지원하지 않는 스타일입니다: ${style}`);
   }
 
   const scene = CORE_ELEMENT_SCENE[coreElement];
-  const light = LUCK_STATE[luckState];
+  const luckLight = LUCK_STATE[luckState];
+  const seasonLight = season ? LUCK_STATE[season] : null;
   const detail = DAILY_DETAIL[dailyDetail];
 
-  if (!scene || !light || !detail) {
+  if (!scene || !luckLight || !detail) {
     throw new Error('사주 콘텐츠 조립에 필요한 키를 찾을 수 없습니다.');
   }
 
+  const light = seasonLight ? `${luckLight}, ${seasonLight}` : luckLight;
   const contentDescription = `${scene}, ${light}, ${detail}`;
   const prompt = styleFn(contentDescription);
 

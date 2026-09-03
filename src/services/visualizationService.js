@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/db');
 const { buildSajuPrompt } = require('./promptEngine');
+const sajuEngine = require('./sajuEngine');
 const imageProvider = require('./imageProvider');
 const { processProviderResult, persistQuadrants } = require('./imageProcessor');
 
@@ -8,26 +9,81 @@ const DAILY_TTL_DAYS = Number(process.env.DAILY_IMAGE_TTL_DAYS || 7);
 const OUTPUT_DIR = process.env.LOCAL_OUTPUT_DIR || './storage/cropped';
 
 /**
- * 사주 시각화 전체 파이프라인: 프롬프트 조립 → 이미지 생성 → 크롭/변환 → 저장 → DB 기록
+ * 사주 시각화 전체 파이프라인: (생년월일시 계산 또는 수동 입력) → 프롬프트 조립
+ * → 이미지 생성 → 크롭/변환 → 저장 → DB 기록
  *
  * @param {Object} input
  * @param {string} input.userId
  * @param {'ORIENTAL'|'MINIMAL'|'3D'} input.style
  * @param {'DAILY'|'MONTHLY'|'DAEWUN'} input.sajuType
- * @param {string} input.coreElement
- * @param {string} input.luckState
- * @param {string} input.dailyDetail
- * @param {string} input.analysisSummary
- * @param {Object} input.analysisDetails
+ * @param {string} [input.birthDateTime] - ISO 문자열. 있으면 만세력 자동 계산 모드
+ * @param {'M'|'F'} [input.gender] - 자동 계산 모드에서 대운 방향 결정에 필요
+ * @param {string} [input.coreElement]  - 수동 모드: 원국 오행
+ * @param {string} [input.luckState]    - 수동 모드: 대운/월운 상태
+ * @param {string} [input.dailyDetail]  - 수동 모드: 일운 디테일
  */
 async function createSajuVisualization(input) {
   const {
-    userId, style, sajuType, coreElement, luckState, dailyDetail,
-    analysisSummary, analysisDetails,
+    userId, style, sajuType,
+    birthDateTime, gender,
+    coreElement, luckState, dailyDetail,
+    analysisSummary: manualSummary, analysisDetails: manualDetails,
   } = input;
 
+  let promptInput;
+  let analysisSummary = manualSummary;
+  let analysisDetails = manualDetails || {};
+  let sajuComputed = null;
+
+  if (birthDateTime) {
+    // 자동 계산 모드: 생년월일시 → 만세력 해석
+    const birth = new Date(birthDateTime);
+    if (Number.isNaN(birth.getTime())) {
+      throw new Error('birthDateTime 형식이 올바르지 않습니다.');
+    }
+    sajuComputed = sajuEngine.interpret(birth, gender === 'F' ? 'F' : 'M');
+
+    promptInput = {
+      style,
+      coreElement: sajuComputed.coreElement,
+      luckState: sajuComputed.luckState,
+      season: sajuComputed.season,
+      dailyDetail: sajuComputed.dailyDetail,
+    };
+
+    analysisDetails = {
+      four_pillars: {
+        year: sajuComputed.fourPillars.year.label.korean,
+        month: sajuComputed.fourPillars.month.label.korean,
+        day: sajuComputed.fourPillars.day.label.korean,
+        hour: sajuComputed.fourPillars.hour.label.korean,
+      },
+      daewun: {
+        name: `${sajuComputed.daewoon.label.korean}(${sajuComputed.daewoon.label.hanja}) 대운`,
+        type: sajuComputed.daewoon.forward ? '순행' : '역행',
+        description: sajuComputed.daewoon.description,
+      },
+      seyun: { name: `${sajuComputed.seyun.label.korean}(${sajuComputed.seyun.label.hanja}) 세운` },
+      monthly_un: { name: `${sajuComputed.monthlyUn.label.korean}(${sajuComputed.monthlyUn.label.hanja}) 월운` },
+      daily_un: { name: `${sajuComputed.dailyUn.label.korean}(${sajuComputed.dailyUn.label.hanja}) 일운` },
+    };
+
+    if (!analysisSummary) {
+      analysisSummary =
+        `일간 ${sajuComputed.coreElement} 기운을 타고나셨으며, 오늘은 ${sajuComputed.season} 절기의 ` +
+        `${sajuComputed.luckState === '길운' ? '순조로운' : '조심스러운'} 하루입니다. ` +
+        `일운은 ${sajuComputed.dailyDetail}에 해당합니다.`;
+    }
+  } else {
+    // 수동 모드: 프론트에서 직접 오행/기운/일운을 지정
+    if (!coreElement || !luckState || !dailyDetail) {
+      throw new Error('수동 모드에는 coreElement, luckState, dailyDetail이 모두 필요합니다.');
+    }
+    promptInput = { style, coreElement, luckState, dailyDetail };
+  }
+
   // 1. 프롬프트 조립
-  const { prompt } = buildSajuPrompt({ style, coreElement, luckState, dailyDetail });
+  const { prompt } = buildSajuPrompt(promptInput);
 
   // 2. 이미지 생성 (정식 API)
   const providerResult = await imageProvider.generateImage(prompt);
@@ -60,7 +116,7 @@ async function createSajuVisualization(input) {
     ]
   );
 
-  return { row: rows[0], prompt };
+  return { row: rows[0], prompt, sajuComputed };
 }
 
 module.exports = { createSajuVisualization };
