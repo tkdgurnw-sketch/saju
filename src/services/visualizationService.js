@@ -58,6 +58,25 @@ async function createSajuVisualization(input) {
         day: sajuComputed.fourPillars.day.label.korean,
         hour: sajuComputed.fourPillars.hour.label.korean,
       },
+      gyeokguk: {
+        name: sajuComputed.gyeokguk.name,
+        basis: sajuComputed.gyeokguk.basis,
+      },
+      strength: {
+        type: sajuComputed.strength.isStrong ? '신강' : '신약',
+        supportive_score: sajuComputed.strength.supportiveScore,
+        draining_score: sajuComputed.strength.drainingScore,
+      },
+      yongsin: {
+        element: sajuComputed.yongsin.element,
+        reason: sajuComputed.yongsin.reason,
+      },
+      interactions: sajuComputed.interactions.map((i) => ({
+        type: i.type,
+        current: i.current,
+        target: i.target,
+        detail: i.detail || null,
+      })),
       daewun: {
         name: `${sajuComputed.daewoon.label.korean}(${sajuComputed.daewoon.label.hanja}) 대운`,
         type: sajuComputed.daewoon.forward ? '순행' : '역행',
@@ -69,10 +88,13 @@ async function createSajuVisualization(input) {
     };
 
     if (!analysisSummary) {
+      const interactionNote = sajuComputed.interactions.length > 0
+        ? ` 오늘은 원국과 ${sajuComputed.interactions.length}건의 형충회합이 감지됩니다.`
+        : ' 오늘은 원국과 특별한 형충회합이 없는 평온한 날입니다.';
       analysisSummary =
-        `일간 ${sajuComputed.coreElement} 기운을 타고나셨으며, 오늘은 ${sajuComputed.season} 절기의 ` +
-        `${sajuComputed.luckState === '길운' ? '순조로운' : '조심스러운'} 하루입니다. ` +
-        `일운은 ${sajuComputed.dailyDetail}에 해당합니다.`;
+        `일간 ${sajuComputed.coreElement} 기운, ${sajuComputed.gyeokguk.name}·${sajuComputed.strength.isStrong ? '신강' : '신약'} 사주이며 ` +
+        `용신은 ${sajuComputed.yongsin.element}입니다. 오늘은 ${sajuComputed.season} 절기의 ` +
+        `${sajuComputed.luckState === '길운' ? '순조로운' : '조심스러운'} 하루입니다.${interactionNote}`;
     }
   } else {
     // 수동 모드: 프론트에서 직접 오행/기운/일운을 지정

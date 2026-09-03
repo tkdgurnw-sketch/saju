@@ -62,6 +62,27 @@ const HOUR_STEM_BASE_BY_DAY_STEM = {
 
 const BRANCH_CLASH_PAIRS = [[0, 6], [1, 7], [2, 8], [3, 9], [4, 10], [5, 11]]; // 자오/축미/인신/묘유/진술/사해 충
 const BRANCH_COMBINE_PAIRS = [[0, 1], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7]]; // 육합
+const BRANCH_HARM_PAIRS = [[0, 7], [1, 6], [2, 5], [3, 4], [8, 11], [9, 10]]; // 육해 (자미/축오/인사/묘진/신해/유술)
+const BRANCH_TRIPLE_PUNISH_GROUPS = [[2, 5, 8], [1, 10, 7]]; // 인사신 삼형 / 축술미 삼형
+const BRANCH_MUTUAL_PUNISH_PAIRS = [[0, 3]]; // 자묘형 (상형)
+const BRANCH_SELF_PUNISH = [4, 6, 9, 11]; // 진오유해 자형 (같은 지지가 겹칠 때)
+
+// 지지 본기(本氣) — 십성 판정 시 지지를 대표하는 천간
+const BRANCH_MAIN_STEM = [9, 5, 0, 1, 4, 2, 3, 5, 6, 7, 4, 8];
+
+const TEN_GOD_NAMES = {
+  same_same: '비견', same_diff: '겁재',
+  generate_same: '식신', generate_diff: '상관',
+  control_same: '편재', control_diff: '정재',
+  controlled_same: '편관', controlled_diff: '정관',
+  generated_same: '편인', generated_diff: '정인',
+};
+
+const SUPPORTIVE_TEN_GODS = ['비견', '겁재', '편인', '정인'];
+
+// 인성/관성의 근원 오행 (어떤 오행이 dayElement를 생/극하는가)
+const INSEONG_SOURCE = { 火: '木', 土: '火', 金: '土', 水: '金', 木: '水' }; // X가 dayElement를 생함
+const GWANSEONG_SOURCE = { 土: '木', 金: '火', 水: '土', 木: '金', 火: '水' }; // X가 dayElement를 극함
 
 function mod(n, m) {
   return ((n % m) + m) % m;
@@ -257,6 +278,133 @@ function judgeDailyDetail(todayDay, personDay) {
 }
 
 /**
+ * 십성(十星) 판정: otherStemIndex가 dayMasterStemIndex에 대해 어떤 십성인지 반환
+ */
+function tenGod(dayMasterStemIndex, otherStemIndex) {
+  const dayElem = STEM_ELEMENT[dayMasterStemIndex];
+  const otherElem = STEM_ELEMENT[otherStemIndex];
+  const sameYinYang = (dayMasterStemIndex % 2) === (otherStemIndex % 2);
+  const suffix = sameYinYang ? 'same' : 'diff';
+
+  let relation;
+  if (otherElem === dayElem) relation = 'same';
+  else if (GENERATES[dayElem] === otherElem) relation = 'generate';       // 일간이 생함 → 식상
+  else if (CONTROLS[dayElem] === otherElem) relation = 'control';         // 일간이 극함 → 재성
+  else if (CONTROLS[otherElem] === dayElem) relation = 'controlled';      // 일간을 극함 → 관성
+  else if (GENERATES[otherElem] === dayElem) relation = 'generated';      // 일간을 생함 → 인성
+  else relation = 'same';
+
+  return TEN_GOD_NAMES[`${relation}_${suffix}`];
+}
+
+/** 지지의 십성 (본기 기준) */
+function tenGodOfBranch(dayMasterStemIndex, branchIndex) {
+  return tenGod(dayMasterStemIndex, BRANCH_MAIN_STEM[branchIndex]);
+}
+
+/**
+ * 격국(格局) 판정 — 월지 본기의 십성을 기준으로 하는 표준 자평 방식(간이 버전).
+ * 여러 명리학파에 따라 판단 기준이 달라질 수 있어 참고용입니다.
+ */
+function judgeGyeokguk(fourPillars) {
+  const monthTenGod = tenGodOfBranch(fourPillars.day.stemIndex, fourPillars.month.branchIndex);
+  const specialNames = { 비견: '건록격', 겁재: '양인격' };
+  const name = specialNames[monthTenGod] || `${monthTenGod}격`;
+  return { name, basis: monthTenGod };
+}
+
+/**
+ * 신강/신약 판단 — 월지(득령) 가중치를 높게 두고, 나머지 6글자(연간/연지/월간/일지/시간/시지)의
+ * 십성이 비겁·인성(신강 방향)인지 식상·재성·관성(신약 방향)인지를 집계하는 간이 버전.
+ */
+function judgeStrength(fourPillars) {
+  const dayStemIndex = fourPillars.day.stemIndex;
+  const positions = [
+    { god: tenGod(dayStemIndex, fourPillars.year.stemIndex), weight: 1 },
+    { god: tenGodOfBranch(dayStemIndex, fourPillars.year.branchIndex), weight: 1 },
+    { god: tenGod(dayStemIndex, fourPillars.month.stemIndex), weight: 1 },
+    { god: tenGodOfBranch(dayStemIndex, fourPillars.month.branchIndex), weight: 2 }, // 월지는 가중치 2배 (득령)
+    { god: tenGodOfBranch(dayStemIndex, fourPillars.day.branchIndex), weight: 1 },
+    { god: tenGod(dayStemIndex, fourPillars.hour.stemIndex), weight: 1 },
+    { god: tenGodOfBranch(dayStemIndex, fourPillars.hour.branchIndex), weight: 1 },
+  ];
+
+  let supportive = 0;
+  let draining = 0;
+  for (const p of positions) {
+    if (SUPPORTIVE_TEN_GODS.includes(p.god)) supportive += p.weight;
+    else draining += p.weight;
+  }
+
+  return {
+    isStrong: supportive >= draining,
+    supportiveScore: supportive,
+    drainingScore: draining,
+  };
+}
+
+/**
+ * 용신(用神) 도출 — 신강이면 관성/식상 오행으로 기운을 덜어내고,
+ * 신약이면 인성/비겁 오행으로 기운을 보태는 억부용신(抑扶用神) 방식의 간이 버전입니다.
+ */
+function judgeYongsin(dayMasterElement, isStrong) {
+  if (isStrong) {
+    const element = GWANSEONG_SOURCE[dayMasterElement] || GENERATES[dayMasterElement];
+    return { element, reason: '신강(身强)하여 관성으로 기운을 다스리는 것을 우선으로 봅니다.' };
+  }
+  const element = INSEONG_SOURCE[dayMasterElement] || dayMasterElement;
+  return { element, reason: '신약(身弱)하여 인성으로 기운을 보태는 것을 우선으로 봅니다.' };
+}
+
+/**
+ * 원국(4기둥)과 오늘의 세운/월운/일운 지지 사이의 형충회합(刑沖會合)을 탐지한다.
+ * @returns {Array<{type: '충'|'합'|'형'|'해', current: string, target: string}>}
+ */
+function findInteractions(fourPillars, currentPillars) {
+  const targets = [
+    { label: '연지', branchIndex: fourPillars.year.branchIndex },
+    { label: '월지', branchIndex: fourPillars.month.branchIndex },
+    { label: '일지', branchIndex: fourPillars.day.branchIndex },
+    { label: '시지', branchIndex: fourPillars.hour.branchIndex },
+  ];
+  const currents = [
+    { label: '세운', branchIndex: currentPillars.seyun.branchIndex },
+    { label: '월운', branchIndex: currentPillars.monthlyUn.branchIndex },
+    { label: '일운', branchIndex: currentPillars.dailyUn.branchIndex },
+  ];
+
+  const pairMatch = (pairs, a, b) => pairs.some(([x, y]) => (x === a && y === b) || (y === a && x === b));
+
+  const results = [];
+  for (const cur of currents) {
+    for (const tgt of targets) {
+      if (cur.branchIndex === tgt.branchIndex && BRANCH_SELF_PUNISH.includes(cur.branchIndex)) {
+        results.push({ type: '형', current: cur.label, target: tgt.label, detail: '자형' });
+        continue;
+      }
+      if (pairMatch(BRANCH_CLASH_PAIRS, cur.branchIndex, tgt.branchIndex)) {
+        results.push({ type: '충', current: cur.label, target: tgt.label });
+      }
+      if (pairMatch(BRANCH_COMBINE_PAIRS, cur.branchIndex, tgt.branchIndex)) {
+        results.push({ type: '합', current: cur.label, target: tgt.label });
+      }
+      if (pairMatch(BRANCH_HARM_PAIRS, cur.branchIndex, tgt.branchIndex)) {
+        results.push({ type: '해', current: cur.label, target: tgt.label });
+      }
+      if (pairMatch(BRANCH_MUTUAL_PUNISH_PAIRS, cur.branchIndex, tgt.branchIndex)) {
+        results.push({ type: '형', current: cur.label, target: tgt.label, detail: '상형' });
+      }
+      for (const group of BRANCH_TRIPLE_PUNISH_GROUPS) {
+        if (group.includes(cur.branchIndex) && group.includes(tgt.branchIndex) && cur.branchIndex !== tgt.branchIndex) {
+          results.push({ type: '형', current: cur.label, target: tgt.label, detail: '삼형' });
+        }
+      }
+    }
+  }
+  return results;
+}
+
+/**
  * 생년월일시 + 성별로 오늘 기준 전체 사주 해석을 계산한다.
  * @param {Date} birthDate
  * @param {'M'|'F'} gender
@@ -271,14 +419,40 @@ function interpret(birthDate, gender, today = new Date()) {
   const monthPillarToday = getMonthPillar(today);
   const dayPillarToday = getDayPillar(today);
 
+  const currentPillars = {
+    seyun: yearPillarToday,
+    monthlyUn: monthPillarToday,
+    dailyUn: dayPillarToday,
+  };
+
   const seyunElement = STEM_ELEMENT[yearPillarToday.stemIndex];
   const luckState = judgeFortune(seyunElement, dayMasterElement);
   const season = BRANCH_SEASON[monthPillarToday.branchIndex];
-  const dailyDetail = judgeDailyDetail(dayPillarToday, fourPillars.day);
+
+  const gyeokguk = judgeGyeokguk(fourPillars);
+  const strength = judgeStrength(fourPillars);
+  const yongsin = judgeYongsin(dayMasterElement, strength.isStrong);
+  const interactions = findInteractions(fourPillars, currentPillars);
+
+  // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
+  const priority = { 형: 4, 충: 3, 해: 2, 합: 1 };
+  const dailyEvents = interactions.filter(i => i.current === '일운' || i.current === '세운' || i.current === '월운');
+  let dailyDetail;
+  if (dailyEvents.length > 0) {
+    dailyEvents.sort((a, b) => (priority[b.type] || 0) - (priority[a.type] || 0));
+    const top = dailyEvents[0].type;
+    dailyDetail = top === '해' ? '충/형' : top; // DAILY_DETAIL 사전에 '해'가 별도 없어 '충/형' 이미지로 대체
+  } else {
+    dailyDetail = judgeDailyDetail(dayPillarToday, fourPillars.day);
+  }
 
   return {
     fourPillars,
     coreElement: dayMasterElement,
+    gyeokguk,
+    strength,
+    yongsin,
+    interactions,
     daewoon: {
       ...daewoon,
       description: daewoon.periodIndex === 0
@@ -307,6 +481,8 @@ module.exports = {
   getFourPillars,
   getDaewoon,
   interpret,
+  tenGod,
+  findInteractions,
   STEMS,
   BRANCHES,
   STEM_ELEMENT,
