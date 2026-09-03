@@ -441,7 +441,8 @@ function interpret(birthDate, gender, today = new Date()) {
   if (dailyEvents.length > 0) {
     dailyEvents.sort((a, b) => (priority[b.type] || 0) - (priority[a.type] || 0));
     const top = dailyEvents[0].type;
-    dailyDetail = top === '해' ? '충/형' : top; // DAILY_DETAIL 사전에 '해'가 별도 없어 '충/형' 이미지로 대체
+    // DAILY_DETAIL 사전 키는 '충/형'·'합'·'재성운'·'인성운' 뿐이므로 매핑
+    dailyDetail = top === '합' ? '합' : '충/형';
   } else {
     dailyDetail = judgeDailyDetail(dayPillarToday, fourPillars.day);
   }
