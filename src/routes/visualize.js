@@ -1,6 +1,29 @@
 const express = require('express');
 const router = express.Router();
+const db = require('../config/db');
 const { createSajuVisualization } = require('../services/visualizationService');
+
+/**
+ * POST /api/v1/saju/ensure-user
+ * 웹/앱 프론트엔드가 처음 방문한 사용자를 자동 등록할 때 사용 (없으면 생성, 있으면 무시)
+ */
+router.post('/ensure-user', async (req, res) => {
+  try {
+    const { userId, userName } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, error: 'userId 누락' });
+    }
+    await db.query(
+      `INSERT INTO users (user_id, user_name) VALUES ($1, $2)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId, userName || userId]
+    );
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    console.error('[POST /ensure-user] 오류:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 /**
  * POST /api/v1/saju/visualize
