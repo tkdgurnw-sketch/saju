@@ -68,8 +68,11 @@ async function createSajuVisualization(input) {
         draining_score: sajuComputed.strength.drainingScore,
       },
       yongsin: {
-        element: sajuComputed.yongsin.element,
-        reason: sajuComputed.yongsin.reason,
+        eokbu: sajuComputed.yongsin.eokbu,
+        johu: sajuComputed.yongsin.johu,
+        tonggwan: sajuComputed.yongsin.tonggwan,
+        byeongyak: sajuComputed.yongsin.byeongyak,
+        jeonwang: sajuComputed.yongsin.jeonwang,
       },
       interactions: sajuComputed.interactions.map((i) => ({
         type: i.type,
@@ -93,7 +96,7 @@ async function createSajuVisualization(input) {
         : ' 오늘은 원국과 특별한 형충회합이 없는 평온한 날입니다.';
       analysisSummary =
         `일간 ${sajuComputed.coreElement} 기운, ${sajuComputed.gyeokguk.name}·${sajuComputed.strength.isStrong ? '신강' : '신약'} 사주이며 ` +
-        `용신은 ${sajuComputed.yongsin.element}입니다. 오늘은 ${sajuComputed.season} 절기의 ` +
+        `억부용신은 ${sajuComputed.yongsin.eokbu.element}입니다. 오늘은 ${sajuComputed.season} 절기의 ` +
         `${sajuComputed.luckState === '길운' ? '순조로운' : '조심스러운'} 하루입니다.${interactionNote}`;
     }
   } else {

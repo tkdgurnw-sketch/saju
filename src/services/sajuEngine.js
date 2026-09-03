@@ -344,16 +344,129 @@ function judgeStrength(fourPillars) {
 }
 
 /**
- * 용신(用神) 도출 — 신강이면 관성/식상 오행으로 기운을 덜어내고,
- * 신약이면 인성/비겁 오행으로 기운을 보태는 억부용신(抑扶用神) 방식의 간이 버전입니다.
+ * ① 억부용신(抑扶用神) — 신강이면 관성으로 다스리고, 신약이면 인성으로 보태는 방식.
+ * 가장 널리 쓰이는 기본 용신 판단법입니다.
  */
-function judgeYongsin(dayMasterElement, isStrong) {
+function judgeEokbuYongsin(dayMasterElement, isStrong) {
   if (isStrong) {
     const element = GWANSEONG_SOURCE[dayMasterElement] || GENERATES[dayMasterElement];
-    return { element, reason: '신강(身强)하여 관성으로 기운을 다스리는 것을 우선으로 봅니다.' };
+    return { element, applicable: true, reason: '신강(身强)하여 관성으로 기운을 다스리는 것을 우선으로 봅니다.' };
   }
   const element = INSEONG_SOURCE[dayMasterElement] || dayMasterElement;
-  return { element, reason: '신약(身弱)하여 인성으로 기운을 보태는 것을 우선으로 봅니다.' };
+  return { element, applicable: true, reason: '신약(身弱)하여 인성으로 기운을 보태는 것을 우선으로 봅니다.' };
+}
+
+// 조후용신 간이표: 계절별로 필요한 한난조습 보정 오행
+// (실제 정통 조후용신표는 일간×월지 120가지 조합별 세부 표이나, 여기서는 계절 단위로 단순화했습니다)
+const JOHU_BY_SEASON = {
+  겨울: { element: '火', reason: '겨울철 한기가 심해 온기(火)로 조후를 맞추는 것이 시급합니다.' },
+  여름: { element: '水', reason: '여름철 조열이 심해 냉기(水)로 조후를 맞추는 것이 시급합니다.' },
+  봄: { element: '水', reason: '봄철은 만물이 자라는 시기라 수분(水)의 자양이 필요합니다.' },
+  가을: { element: '火', reason: '가을철은 서늘하고 건조해지므로 온기(火)로 균형을 보완합니다.' },
+};
+
+/**
+ * ② 조후용신(調候用神) — 태어난 계절의 한난조습을 조절하는 용신. (간이 버전: 계절 단위 근사)
+ */
+function judgeJohuYongsin(season) {
+  const rule = JOHU_BY_SEASON[season] || JOHU_BY_SEASON['봄'];
+  return { element: rule.element, applicable: true, reason: rule.reason };
+}
+
+/**
+ * ③ 통관용신(通關用神) — 신강/신약 세력이 팽팽하게 맞서 있을 때, 그 사이를 소통시키는 용신.
+ * 지원 세력과 소모 세력의 점수차가 크지 않을 때만 성립합니다.
+ */
+function judgeTonggwanYongsin(dayMasterElement, strength) {
+  const diff = Math.abs(strength.supportiveScore - strength.drainingScore);
+  if (diff > 1) {
+    return { element: null, applicable: false, reason: '신강/신약 세력 차이가 뚜렷해 통관용신이 특별히 필요하지 않습니다.' };
+  }
+  const element = GENERATES[dayMasterElement]; // 식상: 일간과 그를 극하는 세력 사이를 소통시키는 역할
+  return { element, applicable: true, reason: '지원 세력과 소모 세력이 팽팽히 맞서 있어, 식상 오행으로 기운을 소통시키는 것이 필요합니다.' };
+}
+
+/**
+ * ④ 병약용신(病藥用神) — 원국에서 가장 두드러지게 균형을 해치는 오행("병")을
+ * 억제하는 오행("약")을 용신으로 삼는 방식.
+ */
+function judgeByeongyakYongsin(fourPillars, dayMasterElement) {
+  const dayStemIndex = fourPillars.day.stemIndex;
+  const positions = [
+    { elem: STEM_ELEMENT[fourPillars.year.stemIndex], god: tenGod(dayStemIndex, fourPillars.year.stemIndex) },
+    { elem: BRANCH_ELEMENT[fourPillars.year.branchIndex], god: tenGodOfBranch(dayStemIndex, fourPillars.year.branchIndex) },
+    { elem: STEM_ELEMENT[fourPillars.month.stemIndex], god: tenGod(dayStemIndex, fourPillars.month.stemIndex) },
+    { elem: BRANCH_ELEMENT[fourPillars.month.branchIndex], god: tenGodOfBranch(dayStemIndex, fourPillars.month.branchIndex) },
+    { elem: BRANCH_ELEMENT[fourPillars.day.branchIndex], god: tenGodOfBranch(dayStemIndex, fourPillars.day.branchIndex) },
+    { elem: STEM_ELEMENT[fourPillars.hour.stemIndex], god: tenGod(dayStemIndex, fourPillars.hour.stemIndex) },
+    { elem: BRANCH_ELEMENT[fourPillars.hour.branchIndex], god: tenGodOfBranch(dayStemIndex, fourPillars.hour.branchIndex) },
+  ];
+
+  const drainCount = {};
+  for (const p of positions) {
+    if (!SUPPORTIVE_TEN_GODS.includes(p.god)) {
+      drainCount[p.elem] = (drainCount[p.elem] || 0) + 1;
+    }
+  }
+
+  const entries = Object.entries(drainCount);
+  if (entries.length === 0) {
+    return { element: null, diseaseElement: null, applicable: false, reason: '원국을 해치는 뚜렷한 병처(病處)가 발견되지 않았습니다.' };
+  }
+  entries.sort((a, b) => b[1] - a[1]);
+  const [diseaseElement, count] = entries[0];
+
+  if (count < 2) {
+    return { element: null, diseaseElement: null, applicable: false, reason: '특정 오행이 두드러지게 병이 될 만큼 과다하지 않습니다.' };
+  }
+
+  const medicine = Object.keys(CONTROLS).find((k) => CONTROLS[k] === diseaseElement);
+  return {
+    element: medicine || null,
+    diseaseElement,
+    applicable: !!medicine,
+    reason: `${diseaseElement} 기운이 원국에서 ${count}회로 과다해 병(病)이 되므로, 이를 극하는 ${medicine || '해당'} 오행을 약(藥)으로 봅니다.`,
+  };
+}
+
+/**
+ * ⑤ 전왕용신(專旺用神) — 세력이 한쪽으로 극도로 치우친 경우(종격) 그 기세를 거스르지 않고
+ * 따르는 용신. 지원/소모 점수 차이가 매우 클 때만 성립합니다.
+ */
+function judgeJeonwangYongsin(dayMasterElement, strength) {
+  const total = strength.supportiveScore + strength.drainingScore;
+  const dominance = Math.max(strength.supportiveScore, strength.drainingScore) / total;
+
+  if (dominance < 0.8) {
+    return { element: null, applicable: false, reason: '한쪽으로 극도로 치우친 종격(從格)에 해당하지 않아 전왕용신은 적용하지 않습니다.' };
+  }
+
+  if (strength.supportiveScore > strength.drainingScore) {
+    return {
+      element: dayMasterElement,
+      applicable: true,
+      reason: '비겁·인성이 압도적으로 강해(종왕/종강격 성향) 일간의 오행을 그대로 따르는 것을 용신으로 봅니다.',
+    };
+  }
+  return {
+    element: null,
+    applicable: true,
+    reason: '식상·재성·관성 등 소모 세력이 압도적으로 강해(종격 성향) 그 세력을 거스르지 않는 것이 유리하나, 정확한 종격 판별에는 원국 전체 정밀 분석이 필요합니다.',
+  };
+}
+
+/**
+ * 5가지 용신 이론을 종합해서 반환한다.
+ * 명리학파에 따라 어떤 용신을 우선할지 견해가 다를 수 있어, 5가지 모두 참고용으로 함께 제공합니다.
+ */
+function judgeYongsinFull(fourPillars, dayMasterElement, season, strength) {
+  return {
+    eokbu: judgeEokbuYongsin(dayMasterElement, strength.isStrong),
+    johu: judgeJohuYongsin(season),
+    tonggwan: judgeTonggwanYongsin(dayMasterElement, strength),
+    byeongyak: judgeByeongyakYongsin(fourPillars, dayMasterElement),
+    jeonwang: judgeJeonwangYongsin(dayMasterElement, strength),
+  };
 }
 
 /**
@@ -431,7 +544,7 @@ function interpret(birthDate, gender, today = new Date()) {
 
   const gyeokguk = judgeGyeokguk(fourPillars);
   const strength = judgeStrength(fourPillars);
-  const yongsin = judgeYongsin(dayMasterElement, strength.isStrong);
+  const yongsin = judgeYongsinFull(fourPillars, dayMasterElement, season, strength);
   const interactions = findInteractions(fourPillars, currentPillars);
 
   // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
