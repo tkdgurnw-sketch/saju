@@ -53,10 +53,26 @@ async function createSajuVisualization(input) {
 
     analysisDetails = {
       four_pillars: {
-        year: sajuComputed.fourPillars.year.label.korean,
-        month: sajuComputed.fourPillars.month.label.korean,
-        day: sajuComputed.fourPillars.day.label.korean,
-        hour: sajuComputed.fourPillars.hour.label.korean,
+        year: {
+          korean: sajuComputed.fourPillars.year.label.korean,
+          gan: { han: sajuComputed.fourPillars.year.label.hanja[0], kor: sajuComputed.fourPillars.year.label.korean[0], element: sajuComputed.fourPillars.year.label.stemElement },
+          ji: { han: sajuComputed.fourPillars.year.label.hanja[1], kor: sajuComputed.fourPillars.year.label.korean[1], element: sajuComputed.fourPillars.year.label.branchElement },
+        },
+        month: {
+          korean: sajuComputed.fourPillars.month.label.korean,
+          gan: { han: sajuComputed.fourPillars.month.label.hanja[0], kor: sajuComputed.fourPillars.month.label.korean[0], element: sajuComputed.fourPillars.month.label.stemElement },
+          ji: { han: sajuComputed.fourPillars.month.label.hanja[1], kor: sajuComputed.fourPillars.month.label.korean[1], element: sajuComputed.fourPillars.month.label.branchElement },
+        },
+        day: {
+          korean: sajuComputed.fourPillars.day.label.korean,
+          gan: { han: sajuComputed.fourPillars.day.label.hanja[0], kor: sajuComputed.fourPillars.day.label.korean[0], element: sajuComputed.fourPillars.day.label.stemElement },
+          ji: { han: sajuComputed.fourPillars.day.label.hanja[1], kor: sajuComputed.fourPillars.day.label.korean[1], element: sajuComputed.fourPillars.day.label.branchElement },
+        },
+        hour: {
+          korean: sajuComputed.fourPillars.hour.label.korean,
+          gan: { han: sajuComputed.fourPillars.hour.label.hanja[0], kor: sajuComputed.fourPillars.hour.label.korean[0], element: sajuComputed.fourPillars.hour.label.stemElement },
+          ji: { han: sajuComputed.fourPillars.hour.label.hanja[1], kor: sajuComputed.fourPillars.hour.label.korean[1], element: sajuComputed.fourPillars.hour.label.branchElement },
+        },
       },
       gyeokguk: {
         name: sajuComputed.gyeokguk.name,
