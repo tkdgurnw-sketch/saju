@@ -475,15 +475,24 @@ function judgeYongsinFull(fourPillars, dayMasterElement, season, strength) {
  */
 function findInteractions(fourPillars, currentPillars) {
   const targets = [
-    { label: '연지', branchIndex: fourPillars.year.branchIndex },
-    { label: '월지', branchIndex: fourPillars.month.branchIndex },
-    { label: '일지', branchIndex: fourPillars.day.branchIndex },
-    { label: '시지', branchIndex: fourPillars.hour.branchIndex },
+    { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
+    { label: '월지', branchIndex: fourPillars.month.branchIndex, hanja: BRANCH_HANJA[fourPillars.month.branchIndex] },
+    { label: '일지', branchIndex: fourPillars.day.branchIndex, hanja: BRANCH_HANJA[fourPillars.day.branchIndex] },
+    { label: '시지', branchIndex: fourPillars.hour.branchIndex, hanja: BRANCH_HANJA[fourPillars.hour.branchIndex] },
   ];
   const currents = [
-    { label: '세운', branchIndex: currentPillars.seyun.branchIndex },
-    { label: '월운', branchIndex: currentPillars.monthlyUn.branchIndex },
-    { label: '일운', branchIndex: currentPillars.dailyUn.branchIndex },
+    {
+      label: '세운', branchIndex: currentPillars.seyun.branchIndex,
+      hanja: pillarLabel(currentPillars.seyun.stemIndex, currentPillars.seyun.branchIndex).hanja,
+    },
+    {
+      label: '월운', branchIndex: currentPillars.monthlyUn.branchIndex,
+      hanja: pillarLabel(currentPillars.monthlyUn.stemIndex, currentPillars.monthlyUn.branchIndex).hanja,
+    },
+    {
+      label: '일운', branchIndex: currentPillars.dailyUn.branchIndex,
+      hanja: pillarLabel(currentPillars.dailyUn.stemIndex, currentPillars.dailyUn.branchIndex).hanja,
+    },
   ];
 
   const pairMatch = (pairs, a, b) => pairs.some(([x, y]) => (x === a && y === b) || (y === a && x === b));
@@ -491,7 +500,11 @@ function findInteractions(fourPillars, currentPillars) {
   const results = [];
   for (const cur of currents) {
     for (const tgt of targets) {
-      const base = { current: cur.label, target: tgt.label, targetBranchIndex: tgt.branchIndex };
+      const base = {
+        current: cur.label, target: tgt.label,
+        currentHanja: cur.hanja, targetHanja: tgt.hanja,
+        targetBranchIndex: tgt.branchIndex,
+      };
       if (cur.branchIndex === tgt.branchIndex && BRANCH_SELF_PUNISH.includes(cur.branchIndex)) {
         results.push({ ...base, type: '형', detail: '자형' });
         continue;
@@ -583,6 +596,8 @@ function predictEvents(fourPillars, interactions) {
     return {
       current: i.current,
       target: i.target,
+      currentHanja: i.currentHanja,
+      targetHanja: i.targetHanja,
       type: i.type,
       detail: i.detail || null,
       tenGod: tenGodName,
