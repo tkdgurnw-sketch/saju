@@ -96,6 +96,16 @@ async function createSajuVisualization(input) {
         target: i.target,
         detail: i.detail || null,
       })),
+      predicted_events: sajuComputed.predictedEvents.map((e) => ({
+        current: e.current,
+        target: e.target,
+        type: e.type,
+        detail: e.detail,
+        ten_god: e.tenGod,
+        ten_god_group: e.tenGodGroup,
+        element: e.element,
+        description: e.description,
+      })),
       daewun: {
         name: `${sajuComputed.daewoon.label.korean}(${sajuComputed.daewoon.label.hanja}) 대운`,
         type: sajuComputed.daewoon.forward ? '순행' : '역행',

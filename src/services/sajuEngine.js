@@ -491,30 +491,106 @@ function findInteractions(fourPillars, currentPillars) {
   const results = [];
   for (const cur of currents) {
     for (const tgt of targets) {
+      const base = { current: cur.label, target: tgt.label, targetBranchIndex: tgt.branchIndex };
       if (cur.branchIndex === tgt.branchIndex && BRANCH_SELF_PUNISH.includes(cur.branchIndex)) {
-        results.push({ type: '형', current: cur.label, target: tgt.label, detail: '자형' });
+        results.push({ ...base, type: '형', detail: '자형' });
         continue;
       }
       if (pairMatch(BRANCH_CLASH_PAIRS, cur.branchIndex, tgt.branchIndex)) {
-        results.push({ type: '충', current: cur.label, target: tgt.label });
+        results.push({ ...base, type: '충' });
       }
       if (pairMatch(BRANCH_COMBINE_PAIRS, cur.branchIndex, tgt.branchIndex)) {
-        results.push({ type: '합', current: cur.label, target: tgt.label });
+        results.push({ ...base, type: '합' });
       }
       if (pairMatch(BRANCH_HARM_PAIRS, cur.branchIndex, tgt.branchIndex)) {
-        results.push({ type: '해', current: cur.label, target: tgt.label });
+        results.push({ ...base, type: '해' });
       }
       if (pairMatch(BRANCH_MUTUAL_PUNISH_PAIRS, cur.branchIndex, tgt.branchIndex)) {
-        results.push({ type: '형', current: cur.label, target: tgt.label, detail: '상형' });
+        results.push({ ...base, type: '형', detail: '상형' });
       }
       for (const group of BRANCH_TRIPLE_PUNISH_GROUPS) {
         if (group.includes(cur.branchIndex) && group.includes(tgt.branchIndex) && cur.branchIndex !== tgt.branchIndex) {
-          results.push({ type: '형', current: cur.label, target: tgt.label, detail: '삼형' });
+          results.push({ ...base, type: '형', detail: '삼형' });
         }
       }
     }
   }
   return results;
+}
+
+// 십성 → 그룹(비겁/식상/재성/관성/인성) 매핑
+const TEN_GOD_GROUP = {
+  비견: '비겁', 겁재: '비겁',
+  식신: '식상', 상관: '식상',
+  정재: '재성', 편재: '재성',
+  정관: '관성', 편관: '관성',
+  정인: '인성', 편인: '인성',
+};
+
+// 자리(연/월/일/시지)가 뜻하는 인생 영역
+const POSITION_DOMAIN = {
+  연지: '가족·윗사람·조상운과 관련된 영역',
+  월지: '사회활동·부모형제·직장동료와 관련된 영역',
+  일지: '본인 자신과 배우자·가까운 인간관계 영역',
+  시지: '자녀·아랫사람·미래 계획과 관련된 영역',
+};
+
+// 십성 그룹별 사건 테마
+const TEN_GOD_GROUP_THEME = {
+  비겁: '경쟁자·동료·형제자매와의 협력 또는 갈등',
+  식상: '활동력·언변·표현력이 커지는 동시에 구설수나 자녀 관련 문제',
+  재성: '재물의 흐름이나 이성 관계의 변화',
+  관성: '직장·명예·책임·규율과 관련된 변동',
+  인성: '문서·계약·학업이나 윗사람의 도움과 관련된 일',
+};
+
+// 상호작용 유형별 작용 방식
+const INTERACTION_ACTION = {
+  충: '강하게 흔들리며(沖) 급격한 변화나 이동수로',
+  형: '날카롭게 부딪히며(刑) 다툼이나 관재구설의 형태로',
+  합: '뜻밖에 결합되며(合) 새로운 인연이나 협력의 형태로',
+  해: '은근하게 훼방을 받으며(害) 눈에 띄지 않는 차질의 형태로',
+};
+
+function pickParticle(word, withBatchim, withoutBatchim) {
+  const lastChar = word[word.length - 1];
+  const code = lastChar.charCodeAt(0) - 0xAC00;
+  if (code < 0 || code > 11171) return withBatchim;
+  return (code % 28) !== 0 ? withBatchim : withoutBatchim;
+}
+
+/**
+ * 오늘 발생한 형충회합을 십성/오행 관점에서 해석해 예상 사건 문구를 생성한다.
+ * (전통 명리 이론의 통변 방식을 간이화한 참고용 해석입니다)
+ */
+function predictEvents(fourPillars, interactions) {
+  const dayStemIndex = fourPillars.day.stemIndex;
+
+  return interactions.map((i) => {
+    const tenGodName = tenGodOfBranch(dayStemIndex, i.targetBranchIndex);
+    const group = TEN_GOD_GROUP[tenGodName] || '비겁';
+    const element = BRANCH_ELEMENT[i.targetBranchIndex];
+    const domain = POSITION_DOMAIN[i.target];
+    const action = INTERACTION_ACTION[i.type];
+    const theme = TEN_GOD_GROUP_THEME[group];
+    const particle = pickParticle(theme, '이', '가');
+
+    const objParticle = pickParticle(i.target, '을', '를');
+    const description =
+      `${i.current}이(가) 원국의 ${i.target}(${group}, ${element} 기운)${objParticle} ${action} 동(動)합니다. ` +
+      `${domain}에서 ${theme}${particle} 나타날 수 있습니다.`;
+
+    return {
+      current: i.current,
+      target: i.target,
+      type: i.type,
+      detail: i.detail || null,
+      tenGod: tenGodName,
+      tenGodGroup: group,
+      element,
+      description,
+    };
+  });
 }
 
 /**
@@ -546,6 +622,7 @@ function interpret(birthDate, gender, today = new Date()) {
   const strength = judgeStrength(fourPillars);
   const yongsin = judgeYongsinFull(fourPillars, dayMasterElement, season, strength);
   const interactions = findInteractions(fourPillars, currentPillars);
+  const predictedEvents = predictEvents(fourPillars, interactions);
 
   // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
   const priority = { 형: 4, 충: 3, 해: 2, 합: 1 };
@@ -567,6 +644,7 @@ function interpret(birthDate, gender, today = new Date()) {
     strength,
     yongsin,
     interactions,
+    predictedEvents,
     daewoon: {
       ...daewoon,
       description: daewoon.periodIndex === 0
@@ -597,6 +675,7 @@ module.exports = {
   interpret,
   tenGod,
   findInteractions,
+  predictEvents,
   STEMS,
   BRANCHES,
   STEM_ELEMENT,
