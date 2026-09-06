@@ -70,6 +70,40 @@ const BRANCH_SELF_PUNISH = [4, 6, 9, 11]; // 진오유해 자형 (같은 지지�
 // 지지 본기(本氣) — 십성 판정 시 지지를 대표하는 천간
 const BRANCH_MAIN_STEM = [9, 5, 0, 1, 4, 2, 3, 5, 6, 7, 4, 8];
 
+// 지장간(地藏干) — 각 지지 속에 숨어있는 천간들 (여기/중기/정기 순, 자시 순서)
+const BRANCH_HIDDEN_STEMS = [
+  [8, 9],       // 자: 임,계
+  [9, 7, 5],    // 축: 계,신,기
+  [4, 2, 0],    // 인: 무,병,갑
+  [0, 1],       // 묘: 갑,을
+  [1, 9, 4],    // 진: 을,계,무
+  [4, 6, 2],    // 사: 무,경,병
+  [2, 5, 3],    // 오: 병,기,정
+  [3, 1, 5],    // 미: 정,을,기
+  [4, 8, 6],    // 신: 무,임,경
+  [6, 7],       // 유: 경,신
+  [7, 3, 4],    // 술: 신,정,무
+  [4, 0, 8],    // 해: 무,갑,임
+];
+
+// 천간합(天干合) 5쌍과 그 결합 결과 오행
+const STEM_COMBINE_PAIRS = [
+  { pair: [0, 5], result: '土' }, // 갑기합토
+  { pair: [1, 6], result: '金' }, // 을경합금
+  { pair: [2, 7], result: '水' }, // 병신합수
+  { pair: [3, 8], result: '木' }, // 정임합목
+  { pair: [4, 9], result: '火' }, // 무계합화
+];
+
+// 암합으로 결합된 오행의 성격
+const AMHAP_ELEMENT_THEME = {
+  木: '새로운 시작이나 확장의 기운',
+  火: '드러나지 않게 타오르는 열정이나 다툼의 소지',
+  土: '신뢰나 안정적 관계가 은밀히 형성되는 기운',
+  金: '결단이나 정리의 기운',
+  水: '지혜나 소통이 은밀히 오가는 기운',
+};
+
 const TEN_GOD_NAMES = {
   same_same: '비견', same_diff: '겁재',
   generate_same: '식신', generate_diff: '상관',
@@ -473,12 +507,13 @@ function judgeYongsinFull(fourPillars, dayMasterElement, season, strength) {
  * 원국(4기둥)과 오늘의 세운/월운/일운 지지 사이의 형충회합(刑沖會合)을 탐지한다.
  * @returns {Array<{type: '충'|'합'|'형'|'해', current: string, target: string}>}
  */
-function findInteractions(fourPillars, currentPillars) {
+function findInteractions(fourPillars, daewoonPillar, currentPillars) {
   const targets = [
     { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
     { label: '월지', branchIndex: fourPillars.month.branchIndex, hanja: BRANCH_HANJA[fourPillars.month.branchIndex] },
     { label: '일지', branchIndex: fourPillars.day.branchIndex, hanja: BRANCH_HANJA[fourPillars.day.branchIndex] },
     { label: '시지', branchIndex: fourPillars.hour.branchIndex, hanja: BRANCH_HANJA[fourPillars.hour.branchIndex] },
+    { label: '대운', branchIndex: daewoonPillar.branchIndex, hanja: BRANCH_HANJA[daewoonPillar.branchIndex] },
   ];
   const currents = [
     {
@@ -546,6 +581,10 @@ const POSITION_DOMAIN = {
   월지: '사회활동·부모형제·직장동료와 관련된 영역',
   일지: '본인 자신과 배우자·가까운 인간관계 영역',
   시지: '자녀·아랫사람·미래 계획과 관련된 영역',
+  대운: '지금 흐르고 있는 10년 대운의 방향성과 관련된 영역',
+  세운: '올해 전반의 흐름과 관련된 영역',
+  월운: '이번 달의 흐름과 관련된 영역',
+  일운: '오늘 하루의 흐름과 관련된 영역',
 };
 
 // 십성 그룹별 사건 테마
@@ -570,6 +609,59 @@ function pickParticle(word, withBatchim, withoutBatchim) {
   const code = lastChar.charCodeAt(0) - 0xAC00;
   if (code < 0 || code > 11171) return withBatchim;
   return (code % 28) !== 0 ? withBatchim : withoutBatchim;
+}
+
+/**
+ * 지장간 암합(暗合) 탐지 — 일지 속의 지장간과 다른 자리(연/월/시지, 대운, 세운/월운/일운)
+ * 속의 지장간이 천간합 관계를 이룰 때, 겉으로 드러나지 않는 결합 작용을 찾아낸다.
+ */
+function findAmhap(fourPillars, daewoonPillar, currentPillars) {
+  const dayBranchIndex = fourPillars.day.branchIndex;
+  const dayHidden = BRANCH_HIDDEN_STEMS[dayBranchIndex];
+
+  const others = [
+    { label: '연지', branchIndex: fourPillars.year.branchIndex },
+    { label: '월지', branchIndex: fourPillars.month.branchIndex },
+    { label: '시지', branchIndex: fourPillars.hour.branchIndex },
+    { label: '대운', branchIndex: daewoonPillar.branchIndex },
+    { label: '세운', branchIndex: currentPillars.seyun.branchIndex },
+    { label: '월운', branchIndex: currentPillars.monthlyUn.branchIndex },
+    { label: '일운', branchIndex: currentPillars.dailyUn.branchIndex },
+  ];
+
+  const results = [];
+  for (const other of others) {
+    if (other.branchIndex === dayBranchIndex) continue; // 같은 지지끼리는 암합으로 보지 않음
+    const otherHidden = BRANCH_HIDDEN_STEMS[other.branchIndex];
+
+    for (const dh of dayHidden) {
+      for (const oh of otherHidden) {
+        const combo = STEM_COMBINE_PAIRS.find(
+          (c) => (c.pair[0] === dh && c.pair[1] === oh) || (c.pair[1] === dh && c.pair[0] === oh)
+        );
+        if (!combo) continue;
+
+        const domain = POSITION_DOMAIN[other.label] || '';
+        const theme = AMHAP_ELEMENT_THEME[combo.result];
+        const themeParticle = pickParticle(theme, '이', '가');
+
+        results.push({
+          target: other.label,
+          targetHanja: BRANCH_HANJA[other.branchIndex],
+          dayHiddenStem: STEMS[dh],
+          dayHiddenStemHanja: STEM_HANJA[dh],
+          otherHiddenStem: STEMS[oh],
+          otherHiddenStemHanja: STEM_HANJA[oh],
+          resultElement: combo.result,
+          description:
+            `일지(${BRANCH_HANJA[dayBranchIndex]}) 속 ${STEMS[dh]}(${STEM_HANJA[dh]})${pickParticle(STEMS[dh], '과', '와')} ${other.label}(${BRANCH_HANJA[other.branchIndex]}) 속 ` +
+            `${STEMS[oh]}(${STEM_HANJA[oh]})${pickParticle(STEMS[oh], '이', '가')} 암합하여 ${combo.result} 기운으로 은밀히 결합합니다. ` +
+            `${domain}에서 겉으로 드러나지 않는 ${theme}${themeParticle} 작용할 수 있습니다.`,
+        });
+      }
+    }
+  }
+  return results;
 }
 
 /**
@@ -636,8 +728,9 @@ function interpret(birthDate, gender, today = new Date()) {
   const gyeokguk = judgeGyeokguk(fourPillars);
   const strength = judgeStrength(fourPillars);
   const yongsin = judgeYongsinFull(fourPillars, dayMasterElement, season, strength);
-  const interactions = findInteractions(fourPillars, currentPillars);
+  const interactions = findInteractions(fourPillars, daewoon, currentPillars);
   const predictedEvents = predictEvents(fourPillars, interactions);
+  const amhap = findAmhap(fourPillars, daewoon, currentPillars);
 
   // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
   const priority = { 형: 4, 충: 3, 해: 2, 합: 1 };
@@ -660,6 +753,7 @@ function interpret(birthDate, gender, today = new Date()) {
     yongsin,
     interactions,
     predictedEvents,
+    amhap,
     daewoon: {
       ...daewoon,
       description: daewoon.periodIndex === 0
@@ -691,6 +785,7 @@ module.exports = {
   tenGod,
   findInteractions,
   predictEvents,
+  findAmhap,
   STEMS,
   BRANCHES,
   STEM_ELEMENT,

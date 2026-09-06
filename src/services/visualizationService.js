@@ -73,6 +73,11 @@ async function createSajuVisualization(input) {
           gan: { han: sajuComputed.fourPillars.hour.label.hanja[0], kor: sajuComputed.fourPillars.hour.label.korean[0], element: sajuComputed.fourPillars.hour.label.stemElement },
           ji: { han: sajuComputed.fourPillars.hour.label.hanja[1], kor: sajuComputed.fourPillars.hour.label.korean[1], element: sajuComputed.fourPillars.hour.label.branchElement },
         },
+        daewoon: {
+          korean: sajuComputed.daewoon.label.korean,
+          gan: { han: sajuComputed.daewoon.label.hanja[0], kor: sajuComputed.daewoon.label.korean[0], element: sajuComputed.daewoon.label.stemElement },
+          ji: { han: sajuComputed.daewoon.label.hanja[1], kor: sajuComputed.daewoon.label.korean[1], element: sajuComputed.daewoon.label.branchElement },
+        },
       },
       gyeokguk: {
         name: sajuComputed.gyeokguk.name,
@@ -109,6 +114,16 @@ async function createSajuVisualization(input) {
         ten_god_group: e.tenGodGroup,
         element: e.element,
         description: e.description,
+      })),
+      amhap: sajuComputed.amhap.map((a) => ({
+        target: a.target,
+        target_hanja: a.targetHanja,
+        day_hidden_stem: a.dayHiddenStem,
+        day_hidden_stem_hanja: a.dayHiddenStemHanja,
+        other_hidden_stem: a.otherHiddenStem,
+        other_hidden_stem_hanja: a.otherHiddenStemHanja,
+        result_element: a.resultElement,
+        description: a.description,
       })),
       daewun: {
         name: `${sajuComputed.daewoon.label.korean}(${sajuComputed.daewoon.label.hanja}) 대운`,
