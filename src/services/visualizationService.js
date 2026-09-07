@@ -122,6 +122,7 @@ async function createSajuVisualization(input) {
         type: e.type,
         detail: e.detail,
         reinforces: e.reinforces,
+        role: e.role || null,
         description: e.description,
       })),
       has_core_event: sajuComputed.hasCoreEvent,

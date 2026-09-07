@@ -817,8 +817,13 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
   const samhapBySeyun = findSamhapCompletion(baseList, { branchIndex: currentPillars.seyun.branchIndex });
 
   const coreEvents = [];
-  const coreBranchIndices = new Set();
+  const coreBranchIndices = new Set(); // 하위 호환용 (전체 재현 판정)
   const coreStemIndices = new Set();
+  const attackerBranchIndices = new Set();   // 세운(공격 주체) 쪽 글자
+  const victimBranchIndices = new Set();     // 원국·대운(피격 자리) 쪽 글자
+  const attackerStemIndices = new Set();
+  const victimStemIndices = new Set();
+  const samhapMaterialBranchIndices = new Set(); // 삼합 재료(공수 구분 없음)
 
   for (const s of samhapBySeyun) {
     const item = {
@@ -829,7 +834,7 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     };
     item.description = buildTierDescription(item, 1);
     coreEvents.push(item);
-    s.involvedBranchIndices.forEach((b) => coreBranchIndices.add(b));
+    s.involvedBranchIndices.forEach((b) => { coreBranchIndices.add(b); samhapMaterialBranchIndices.add(b); });
   }
   for (const i of seyunInteractions) {
     const tier = TIER_BY_TYPE[i.type] || 3;
@@ -838,6 +843,8 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     coreEvents.push(item);
     coreBranchIndices.add(i.currentBranchIndex);
     coreBranchIndices.add(i.targetBranchIndex);
+    attackerBranchIndices.add(i.currentBranchIndex);
+    victimBranchIndices.add(i.targetBranchIndex);
   }
   for (const i of seyunStemInteractions) {
     const tier = i.isDayMaster ? 1 : 2;
@@ -846,8 +853,17 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     coreEvents.push(item);
     coreStemIndices.add(i.currentStemIndex);
     coreStemIndices.add(i.targetStemIndex);
+    attackerStemIndices.add(i.currentStemIndex);
+    victimStemIndices.add(i.targetStemIndex);
   }
   coreEvents.sort((a, b) => a.tier - b.tier);
+
+  // 재현된 글자가 "세운(공격 주체)" 쪽인지 "원국·대운(피격 자리)" 쪽인지 판정
+  const classifyRole = (branchOrStemIndex, attackerSet, victimSet) => {
+    if (attackerSet.has(branchOrStemIndex)) return 'attacker';
+    if (victimSet.has(branchOrStemIndex)) return 'victim';
+    return null;
+  };
 
   // 2) 월운/일운 vs (원국+대운) — "언제 구체화되는가" (시기·촉발)
   // 세운 사건에 실제로 쓰인 글자(지지/천간)를 월운·일운이 "다시" 가져올 때만 그 사건의
@@ -867,7 +883,7 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
       const reinforces = s.involvedBranchIndices.some((b) => coreBranchIndices.has(b));
       timingEvents.push({
         current: label, currentHanja: hanja, target: s.matchedLabels, targetHanja: '', type: '삼합', detail: s.name,
-        reinforces,
+        reinforces, role: reinforces ? 'material' : null,
         description: reinforces
           ? `${label}(${hanja})이(가) 원국·대운의 ${s.matchedLabels}와(과) 결합해 ${s.element} 삼합${objParticle} 완성하며, ` +
             `세운 사건에 쓰인 글자를 다시 자극합니다. 세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
@@ -879,13 +895,20 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     const layerInteractions = interactions.filter((i) => i.current === label);
     for (const i of layerInteractions) {
       const objParticle = pickParticle(i.target, '을', '를');
-      const reinforces = coreBranchIndices.has(i.currentBranchIndex) || coreBranchIndices.has(i.targetBranchIndex);
+      const role = classifyRole(i.currentBranchIndex, attackerBranchIndices, victimBranchIndices) ||
+                   (victimBranchIndices.has(i.targetBranchIndex) ? 'victim' : null) ||
+                   (samhapMaterialBranchIndices.has(i.currentBranchIndex) ? 'material' : null);
+      const reinforces = role !== null;
+      const roleTail = role === 'attacker'
+        ? '세운의 그 기운 자체가 이 시기에 다시 강하게 작동한다는 뜻으로, 세운이 예고한 흐름이 재확인됩니다.'
+        : role === 'victim'
+          ? '세운에게 얻어맞았던 바로 그 자리(원국·대운)가 이 시기에 또 한 번 직접 흔들린다는 뜻으로, 피해·변화가 그 영역에 집중됩니다.'
+          : '세운 재료가 다시 얽히는 신호로, 사건이 구체화되는 시점으로 볼 수 있습니다.';
       timingEvents.push({
         ...i,
-        reinforces,
+        reinforces, role,
         description: reinforces
-          ? `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})하며, ` +
-            `세운 사건에 쓰인 바로 그 글자를 재차 자극합니다. 세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+          ? `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})합니다. ${roleTail}`
           : `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})하지만, ` +
             `세운 사건에 쓰인 글자와는 무관해 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`,
       });
@@ -895,13 +918,17 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     for (const i of layerStemInteractions) {
       const targetPhrase = i.isDayMaster ? '일간' : i.target;
       const objParticle = pickParticle(targetPhrase, '을', '를');
-      const reinforces = coreStemIndices.has(i.currentStemIndex) || coreStemIndices.has(i.targetStemIndex);
+      const role = classifyRole(i.currentStemIndex, attackerStemIndices, victimStemIndices) ||
+                   (victimStemIndices.has(i.targetStemIndex) ? 'victim' : null);
+      const reinforces = role !== null;
+      const roleTail = role === 'attacker'
+        ? '세운 천간의 그 기운 자체가 이 시기에 다시 강하게 작동합니다.'
+        : '세운에게 작용을 받았던 바로 그 천간 자리가 이 시기에 또 한 번 직접 흔들립니다.';
       timingEvents.push({
         ...i,
-        reinforces,
+        reinforces, role,
         description: reinforces
-          ? `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)하며' : objParticle + ' 다시 충(沖)하며'}, ` +
-            `세운 사건에 쓰인 바로 그 천간을 재차 자극합니다. 세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+          ? `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)합니다' : objParticle + ' 다시 충(沖)합니다'}. ${roleTail}`
           : `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
             `세운 사건에 쓰인 천간과는 무관해 ${i.isDayMaster ? '하루·한 달 내의 심경 변화 정도' : '가벼운 해프닝 수준'}에 그칠 가능성이 높습니다.`,
       });
