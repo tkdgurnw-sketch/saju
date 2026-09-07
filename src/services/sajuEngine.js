@@ -550,7 +550,7 @@ function findInteractions(fourPillars, daewoonPillar, currentPillars) {
       const base = {
         current: cur.label, target: tgt.label,
         currentHanja: cur.hanja, targetHanja: tgt.hanja,
-        targetBranchIndex: tgt.branchIndex,
+        currentBranchIndex: cur.branchIndex, targetBranchIndex: tgt.branchIndex,
       };
       if (cur.branchIndex === tgt.branchIndex && BRANCH_SELF_PUNISH.includes(cur.branchIndex)) {
         results.push({ ...base, type: '형', detail: '자형' });
@@ -661,8 +661,8 @@ function findStemInteractions(fourPillars, daewoonPillar, currentPillars) {
       );
       if (combo) {
         results.push({
-          current: cur.label, currentHanja: curHanja,
-          target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex],
+          current: cur.label, currentHanja: curHanja, currentStemIndex: cur.stemIndex,
+          target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], targetStemIndex: tgt.stemIndex,
           type: '천간합', resultElement: combo.result, isDayMaster: tgt.label === '일간',
         });
       }
@@ -672,8 +672,8 @@ function findStemInteractions(fourPillars, daewoonPillar, currentPillars) {
       );
       if (isClash) {
         results.push({
-          current: cur.label, currentHanja: curHanja,
-          target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex],
+          current: cur.label, currentHanja: curHanja, currentStemIndex: cur.stemIndex,
+          target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], targetStemIndex: tgt.stemIndex,
           type: '천간충', resultElement: null, isDayMaster: tgt.label === '일간',
         });
       }
@@ -747,6 +747,7 @@ function findSamhapCompletion(baseList, trigger) {
         element: group.element,
         name: group.name,
         matchedLabels: presentInBase.map((b) => `${b.label}(${b.hanja})`).join('·'),
+        involvedBranchIndices: [...group.branches], // 삼합을 이루는 3글자 전체 (재자극 판정에 사용)
       });
     }
   }
@@ -816,6 +817,9 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
   const samhapBySeyun = findSamhapCompletion(baseList, { branchIndex: currentPillars.seyun.branchIndex });
 
   const coreEvents = [];
+  const coreBranchIndices = new Set();
+  const coreStemIndices = new Set();
+
   for (const s of samhapBySeyun) {
     const item = {
       current: '세운', currentHanja: pillarLabel(currentPillars.seyun.stemIndex, currentPillars.seyun.branchIndex).hanja,
@@ -825,22 +829,29 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     };
     item.description = buildTierDescription(item, 1);
     coreEvents.push(item);
+    s.involvedBranchIndices.forEach((b) => coreBranchIndices.add(b));
   }
   for (const i of seyunInteractions) {
     const tier = TIER_BY_TYPE[i.type] || 3;
     const item = { ...i, tier, tierLabel: TIER_LABEL[tier] };
     item.description = buildTierDescription(item, tier);
     coreEvents.push(item);
+    coreBranchIndices.add(i.currentBranchIndex);
+    coreBranchIndices.add(i.targetBranchIndex);
   }
   for (const i of seyunStemInteractions) {
     const tier = i.isDayMaster ? 1 : 2;
     const item = { ...i, tier, tierLabel: i.isDayMaster ? '핵심 사건(일간)' : TIER_LABEL[tier] };
     item.description = buildTierDescription(item, tier);
     coreEvents.push(item);
+    coreStemIndices.add(i.currentStemIndex);
+    coreStemIndices.add(i.targetStemIndex);
   }
   coreEvents.sort((a, b) => a.tier - b.tier);
 
   // 2) 월운/일운 vs (원국+대운) — "언제 구체화되는가" (시기·촉발)
+  // 세운 사건에 실제로 쓰인 글자(지지/천간)를 월운·일운이 "다시" 가져올 때만 그 사건의
+  // 촉발로 보고, 무관한 글자의 형충회합은 별개의 경미한 신호(해프닝)로 구분한다.
   const hasCoreEvent = coreEvents.length > 0;
   const timingEvents = [];
 
@@ -853,26 +864,30 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     const samhapHere = findSamhapCompletion(baseList, { branchIndex });
     for (const s of samhapHere) {
       const objParticle = pickParticle(s.name, '을', '를');
+      const reinforces = s.involvedBranchIndices.some((b) => coreBranchIndices.has(b));
       timingEvents.push({
         current: label, currentHanja: hanja, target: s.matchedLabels, targetHanja: '', type: '삼합', detail: s.name,
-        description: hasCoreEvent
-          ? `${label}(${hanja})이(가) 원국·대운의 ${s.matchedLabels}와(과) 결합해 ${s.element} 삼합${objParticle} 완성합니다. ` +
-            `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
-          : `${label}(${hanja})이(가) ${s.matchedLabels}와(과) ${s.element} 삼합을 이루지만, 세운에 뚜렷한 형충회합이 없어 ` +
-            `인생을 바꿀 사건보다는 짧게 지나가는 변화 정도로 볼 수 있습니다.`,
+        reinforces,
+        description: reinforces
+          ? `${label}(${hanja})이(가) 원국·대운의 ${s.matchedLabels}와(과) 결합해 ${s.element} 삼합${objParticle} 완성하며, ` +
+            `세운 사건에 쓰인 글자를 다시 자극합니다. 세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+          : `${label}(${hanja})이(가) ${s.matchedLabels}와(과) ${s.element} 삼합을 이루지만, 세운 사건과는 무관한 글자의 조합이라 ` +
+            `인생을 바꿀 사건보다는 짧게 지나가는 독립적인 변화 정도로 볼 수 있습니다.`,
       });
     }
 
     const layerInteractions = interactions.filter((i) => i.current === label);
     for (const i of layerInteractions) {
       const objParticle = pickParticle(i.target, '을', '를');
+      const reinforces = coreBranchIndices.has(i.currentBranchIndex) || coreBranchIndices.has(i.targetBranchIndex);
       timingEvents.push({
         ...i,
-        description: hasCoreEvent
-          ? `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})하며 자극합니다. ` +
-            `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+        reinforces,
+        description: reinforces
+          ? `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})하며, ` +
+            `세운 사건에 쓰인 바로 그 글자를 재차 자극합니다. 세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
           : `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})하지만, ` +
-            `세운에 뚜렷한 형충회합이 없어 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`,
+            `세운 사건에 쓰인 글자와는 무관해 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`,
       });
     }
 
@@ -880,13 +895,15 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     for (const i of layerStemInteractions) {
       const targetPhrase = i.isDayMaster ? '일간' : i.target;
       const objParticle = pickParticle(targetPhrase, '을', '를');
+      const reinforces = coreStemIndices.has(i.currentStemIndex) || coreStemIndices.has(i.targetStemIndex);
       timingEvents.push({
         ...i,
-        description: hasCoreEvent
-          ? `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)하며' : objParticle + ' 다시 충(沖)하며'} 자극합니다. ` +
-            `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+        reinforces,
+        description: reinforces
+          ? `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)하며' : objParticle + ' 다시 충(沖)하며'}, ` +
+            `세운 사건에 쓰인 바로 그 천간을 재차 자극합니다. 세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
           : `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
-            `세운에 뚜렷한 형충회합이 없어 ${i.isDayMaster ? '하루·한 달 내의 심경 변화 정도' : '가벼운 해프닝 수준'}에 그칠 가능성이 높습니다.`,
+            `세운 사건에 쓰인 천간과는 무관해 ${i.isDayMaster ? '하루·한 달 내의 심경 변화 정도' : '가벼운 해프닝 수준'}에 그칠 가능성이 높습니다.`,
       });
     }
   }

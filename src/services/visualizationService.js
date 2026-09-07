@@ -121,6 +121,7 @@ async function createSajuVisualization(input) {
         targetHanja: e.targetHanja,
         type: e.type,
         detail: e.detail,
+        reinforces: e.reinforces,
         description: e.description,
       })),
       has_core_event: sajuComputed.hasCoreEvent,
