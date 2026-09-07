@@ -104,6 +104,9 @@ const STEM_COMBINE_PAIRS = [
   { pair: [4, 9], result: '火' }, // 무계합화
 ];
 
+// 천간충(天干沖) 4쌍 — 무기(戊己)는 중앙에 있어 충하지 않음
+const STEM_CLASH_PAIRS = [[0, 6], [1, 7], [2, 8], [3, 9]]; // 갑경/을신/병임/정계 충
+
 // 암합으로 결합된 오행의 성격
 const AMHAP_ELEMENT_THEME = {
   木: '새로운 시작이나 확장의 기운',
@@ -627,6 +630,58 @@ function pickParticle(word, withBatchim, withoutBatchim) {
  * 지장간 암합(暗合) 탐지 — 일지 속의 지장간과 다른 자리(연/월/시지, 대운, 세운/월운/일운)
  * 속의 지장간이 천간합 관계를 이룰 때, 겉으로 드러나지 않는 결합 작용을 찾아낸다.
  */
+/**
+ * 천간(天干)의 합·충 탐지 — 세운/월운/일운의 천간이 원국의 연간·월간·일간·시간, 대운간과
+ * 합(合)하거나 충(沖)하는지 확인한다. 특히 일간과의 작용은 본인 자체에 영향을 주는
+ * 핵심 신호로 취급한다.
+ */
+function findStemInteractions(fourPillars, daewoonPillar, currentPillars) {
+  const targets = [
+    { label: '연간', stemIndex: fourPillars.year.stemIndex },
+    { label: '월간', stemIndex: fourPillars.month.stemIndex },
+    { label: '일간', stemIndex: fourPillars.day.stemIndex },
+    { label: '시간', stemIndex: fourPillars.hour.stemIndex },
+    { label: '대운간', stemIndex: daewoonPillar.stemIndex },
+  ];
+  const currents = [
+    { label: '세운', stemIndex: currentPillars.seyun.stemIndex, branchIndex: currentPillars.seyun.branchIndex },
+    { label: '월운', stemIndex: currentPillars.monthlyUn.stemIndex, branchIndex: currentPillars.monthlyUn.branchIndex },
+    { label: '일운', stemIndex: currentPillars.dailyUn.stemIndex, branchIndex: currentPillars.dailyUn.branchIndex },
+  ];
+
+  const results = [];
+  for (const cur of currents) {
+    const curHanja = pillarLabel(cur.stemIndex, cur.branchIndex).hanja;
+    for (const tgt of targets) {
+      if (cur.stemIndex === tgt.stemIndex) continue; // 동일 천간은 합충 대상 아님
+
+      const combo = STEM_COMBINE_PAIRS.find(
+        (c) => (c.pair[0] === cur.stemIndex && c.pair[1] === tgt.stemIndex) ||
+               (c.pair[1] === cur.stemIndex && c.pair[0] === tgt.stemIndex)
+      );
+      if (combo) {
+        results.push({
+          current: cur.label, currentHanja: curHanja,
+          target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex],
+          type: '천간합', resultElement: combo.result, isDayMaster: tgt.label === '일간',
+        });
+      }
+
+      const isClash = STEM_CLASH_PAIRS.some(
+        ([a, b]) => (a === cur.stemIndex && b === tgt.stemIndex) || (b === cur.stemIndex && a === tgt.stemIndex)
+      );
+      if (isClash) {
+        results.push({
+          current: cur.label, currentHanja: curHanja,
+          target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex],
+          type: '천간충', resultElement: null, isDayMaster: tgt.label === '일간',
+        });
+      }
+    }
+  }
+  return results;
+}
+
 function findAmhap(fourPillars, daewoonPillar, currentPillars) {
   const dayBranchIndex = fourPillars.day.branchIndex;
   const dayHidden = BRANCH_HIDDEN_STEMS[dayBranchIndex];
@@ -712,7 +767,7 @@ const TYPE_HANJA = { 충: '沖', 합: '合', 형: '刑', 파: '破', 해: '害' 
  * "무엇이 일어나는가(세운 vs 원국+대운)"와 "언제 구체화되는가(월운·일운 vs 원국+대운)"를
  * 구분해서 해석한다. (임상 통변 방식을 간이화한 참고용 해석)
  */
-function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, interactions) {
+function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, interactions, stemInteractions) {
   const baseList = [
     { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
     { label: '월지', branchIndex: fourPillars.month.branchIndex, hanja: BRANCH_HANJA[fourPillars.month.branchIndex] },
@@ -733,6 +788,20 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
         `에너지가 정면으로 부딪히는 형국이라, 건강 문제·이별·사건사고·이사나 이직처럼 ` +
         `신속하고 뚜렷하게 체감되는 변화가 나타날 수 있습니다.`;
     }
+    if (i.type === '천간합') {
+      const targetPhrase = i.isDayMaster ? '일간' : i.target;
+      const tail = i.isDayMaster
+        ? '본인의 판단 기준이나 정체성이 새로운 방향으로 바뀌거나, 중요한 계약·결합이 이뤄질 수 있습니다.'
+        : '표면적인 관계나 입장에서 새로운 협력이 나타날 수 있습니다.';
+      return `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})과 합(合)하여 ${i.resultElement} 기운으로 화(化)합니다. ${tail}`;
+    }
+    if (i.type === '천간충') {
+      const targetPhrase = i.isDayMaster ? '일간' : i.target;
+      const tail = i.isDayMaster
+        ? '본인의 마음가짐·건강·의사결정이 크게 흔들리는 시기로, 뜻하지 않은 변화나 심경 변화가 나타날 수 있습니다.'
+        : '표면적인 관계나 입장에서 마찰이 있을 수 있습니다.';
+      return `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})을(를) 충(沖)합니다. ${tail}`;
+    }
     if (tier === 2) {
       return `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})와(과) 합(合)을 이룹니다. ` +
         `연애·계약·협력처럼 개인적으로 밀접하게 묶이는 관계가 새롭게 형성될 수 있습니다.`;
@@ -743,6 +812,7 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
 
   // 1) 세운 vs (원국+대운) — "무엇이 일어나는가" (핵심 사건 후보)
   const seyunInteractions = interactions.filter((i) => i.current === '세운');
+  const seyunStemInteractions = stemInteractions.filter((i) => i.current === '세운');
   const samhapBySeyun = findSamhapCompletion(baseList, { branchIndex: currentPillars.seyun.branchIndex });
 
   const coreEvents = [];
@@ -762,6 +832,12 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     item.description = buildTierDescription(item, tier);
     coreEvents.push(item);
   }
+  for (const i of seyunStemInteractions) {
+    const tier = i.isDayMaster ? 1 : 2;
+    const item = { ...i, tier, tierLabel: i.isDayMaster ? '핵심 사건(일간)' : TIER_LABEL[tier] };
+    item.description = buildTierDescription(item, tier);
+    coreEvents.push(item);
+  }
   coreEvents.sort((a, b) => a.tier - b.tier);
 
   // 2) 월운/일운 vs (원국+대운) — "언제 구체화되는가" (시기·촉발)
@@ -778,7 +854,7 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     for (const s of samhapHere) {
       const objParticle = pickParticle(s.name, '을', '를');
       timingEvents.push({
-        current: label, currentHanja: hanja, type: '삼합', detail: s.name,
+        current: label, currentHanja: hanja, target: s.matchedLabels, targetHanja: '', type: '삼합', detail: s.name,
         description: hasCoreEvent
           ? `${label}(${hanja})이(가) 원국·대운의 ${s.matchedLabels}와(과) 결합해 ${s.element} 삼합${objParticle} 완성합니다. ` +
             `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
@@ -797,6 +873,20 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
             `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
           : `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})하지만, ` +
             `세운에 뚜렷한 형충회합이 없어 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`,
+      });
+    }
+
+    const layerStemInteractions = stemInteractions.filter((i) => i.current === label);
+    for (const i of layerStemInteractions) {
+      const targetPhrase = i.isDayMaster ? '일간' : i.target;
+      const objParticle = pickParticle(targetPhrase, '을', '를');
+      timingEvents.push({
+        ...i,
+        description: hasCoreEvent
+          ? `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)하며' : objParticle + ' 다시 충(沖)하며'} 자극합니다. ` +
+            `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+          : `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
+            `세운에 뚜렷한 형충회합이 없어 ${i.isDayMaster ? '하루·한 달 내의 심경 변화 정도' : '가벼운 해프닝 수준'}에 그칠 가능성이 높습니다.`,
       });
     }
   }
@@ -835,7 +925,8 @@ function interpret(birthDate, gender, today = new Date()) {
   const strength = judgeStrength(fourPillars);
   const yongsin = judgeYongsinFull(fourPillars, dayMasterElement, season, strength);
   const interactions = findInteractions(fourPillars, daewoon, currentPillars);
-  const fortuneNarrative = buildFortuneNarrative(fourPillars, daewoon, currentPillars, interactions);
+  const stemInteractions = findStemInteractions(fourPillars, daewoon, currentPillars);
+  const fortuneNarrative = buildFortuneNarrative(fourPillars, daewoon, currentPillars, interactions, stemInteractions);
   const amhap = findAmhap(fourPillars, daewoon, currentPillars);
 
   // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
@@ -892,6 +983,7 @@ module.exports = {
   interpret,
   tenGod,
   findInteractions,
+  findStemInteractions,
   buildFortuneNarrative,
   findAmhap,
   STEMS,
