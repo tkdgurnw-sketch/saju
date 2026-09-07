@@ -63,9 +63,18 @@ const HOUR_STEM_BASE_BY_DAY_STEM = {
 const BRANCH_CLASH_PAIRS = [[0, 6], [1, 7], [2, 8], [3, 9], [4, 10], [5, 11]]; // 자오/축미/인신/묘유/진술/사해 충
 const BRANCH_COMBINE_PAIRS = [[0, 1], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7]]; // 육합
 const BRANCH_HARM_PAIRS = [[0, 7], [1, 6], [2, 5], [3, 4], [8, 11], [9, 10]]; // 육해 (자미/축오/인사/묘진/신해/유술)
+const BRANCH_BREAK_PAIRS = [[0, 9], [1, 4], [2, 11], [3, 6], [5, 8], [7, 10]]; // 육파 (자유/축진/인해/묘오/사신/미술)
 const BRANCH_TRIPLE_PUNISH_GROUPS = [[2, 5, 8], [1, 10, 7]]; // 인사신 삼형 / 축술미 삼형
 const BRANCH_MUTUAL_PUNISH_PAIRS = [[0, 3]]; // 자묘형 (상형)
 const BRANCH_SELF_PUNISH = [4, 6, 9, 11]; // 진오유해 자형 (같은 지지가 겹칠 때)
+
+// 삼합(三合) 4국 — 신자진(水)/사유축(金)/인오술(火)/해묘미(木)
+const SAMHAP_GROUPS = [
+  { branches: [8, 0, 4], element: '水', name: '신자진(申子辰) 삼합' },
+  { branches: [5, 9, 1], element: '金', name: '사유축(巳酉丑) 삼합' },
+  { branches: [2, 6, 10], element: '火', name: '인오술(寅午戌) 삼합' },
+  { branches: [11, 3, 7], element: '木', name: '해묘미(亥卯未) 삼합' },
+];
 
 // 지지 본기(本氣) — 십성 판정 시 지지를 대표하는 천간
 const BRANCH_MAIN_STEM = [9, 5, 0, 1, 4, 2, 3, 5, 6, 7, 4, 8];
@@ -553,6 +562,9 @@ function findInteractions(fourPillars, daewoonPillar, currentPillars) {
       if (pairMatch(BRANCH_HARM_PAIRS, cur.branchIndex, tgt.branchIndex)) {
         results.push({ ...base, type: '해' });
       }
+      if (pairMatch(BRANCH_BREAK_PAIRS, cur.branchIndex, tgt.branchIndex)) {
+        results.push({ ...base, type: '파' });
+      }
       if (pairMatch(BRANCH_MUTUAL_PUNISH_PAIRS, cur.branchIndex, tgt.branchIndex)) {
         results.push({ ...base, type: '형', detail: '상형' });
       }
@@ -665,40 +677,134 @@ function findAmhap(fourPillars, daewoonPillar, currentPillars) {
 }
 
 /**
- * 오늘 발생한 형충회합을 십성/오행 관점에서 해석해 예상 사건 문구를 생성한다.
- * (전통 명리 이론의 통변 방식을 간이화한 참고용 해석입니다)
+ * 원국+대운(기반) 속에 삼합의 2글자가 이미 갖춰진 상태에서, 트리거(세운/월운/일운)가
+ * 나머지 1글자를 가져와 삼합을 완성하는지 탐지한다.
  */
-function predictEvents(fourPillars, interactions) {
-  const dayStemIndex = fourPillars.day.stemIndex;
+function findSamhapCompletion(baseList, trigger) {
+  const results = [];
+  for (const group of SAMHAP_GROUPS) {
+    const presentInBase = baseList.filter((b) => group.branches.includes(b.branchIndex));
+    const presentValues = presentInBase.map((b) => b.branchIndex);
+    const missing = group.branches.filter((br) => !presentValues.includes(br));
 
-  return interactions.map((i) => {
-    const tenGodName = tenGodOfBranch(dayStemIndex, i.targetBranchIndex);
-    const group = TEN_GOD_GROUP[tenGodName] || '비겁';
-    const element = BRANCH_ELEMENT[i.targetBranchIndex];
-    const domain = POSITION_DOMAIN[i.target];
-    const action = INTERACTION_ACTION[i.type];
-    const theme = TEN_GOD_GROUP_THEME[group];
-    const particle = pickParticle(theme, '이', '가');
-
-    const objParticle = pickParticle(i.target, '을', '를');
-    const description =
-      `${i.current}이(가) 원국의 ${i.target}(${group}, ${element} 기운)${objParticle} ${action} 동(動)합니다. ` +
-      `${domain}에서 ${theme}${particle} 나타날 수 있습니다.`;
-
-    return {
-      current: i.current,
-      target: i.target,
-      currentHanja: i.currentHanja,
-      targetHanja: i.targetHanja,
-      type: i.type,
-      detail: i.detail || null,
-      tenGod: tenGodName,
-      tenGodGroup: group,
-      element,
-      description,
-    };
-  });
+    if (missing.length === 1 && missing[0] === trigger.branchIndex) {
+      results.push({
+        element: group.element,
+        name: group.name,
+        matchedLabels: presentInBase.map((b) => `${b.label}(${b.hanja})`).join('·'),
+      });
+    }
+  }
+  return results;
 }
+
+// 형충회합 유형별 등급(계층) 분류
+// tier1: 삼합완성·충 — 삶의 방향이 결정되는 핵심 사건급
+// tier2: 합(육합) — 개인적 관계가 새로 맺어지는 수준
+// tier3: 형·파·해 — 국지적으로 나타나는 조정·갈등 수준
+const TIER_BY_TYPE = { 삼합: 1, 충: 1, 합: 2, 형: 3, 파: 3, 해: 3 };
+const TIER_LABEL = { 1: '핵심 사건', 2: '관계 결속', 3: '국지적 조정' };
+
+const TYPE_HANJA = { 충: '沖', 합: '合', 형: '刑', 파: '破', 해: '害' };
+
+/**
+ * 대운=판(Stage) / 세운=사건(Event) / 월운·일운=시기·촉발(Trigger) 구조에 따라
+ * "무엇이 일어나는가(세운 vs 원국+대운)"와 "언제 구체화되는가(월운·일운 vs 원국+대운)"를
+ * 구분해서 해석한다. (임상 통변 방식을 간이화한 참고용 해석)
+ */
+function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, interactions) {
+  const baseList = [
+    { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
+    { label: '월지', branchIndex: fourPillars.month.branchIndex, hanja: BRANCH_HANJA[fourPillars.month.branchIndex] },
+    { label: '일지', branchIndex: fourPillars.day.branchIndex, hanja: BRANCH_HANJA[fourPillars.day.branchIndex] },
+    { label: '시지', branchIndex: fourPillars.hour.branchIndex, hanja: BRANCH_HANJA[fourPillars.hour.branchIndex] },
+    { label: '대운', branchIndex: daewoonPillar.branchIndex, hanja: BRANCH_HANJA[daewoonPillar.branchIndex] },
+  ];
+
+  const buildTierDescription = (i, tier) => {
+    const objParticle = pickParticle(i.target, '을', '를');
+    if (tier === 1 && i.type === '삼합') {
+      return `${i.current}(${i.currentHanja})이(가) 원국·대운에 이미 갖춰진 ${i.samhapMatch}와(과) 손잡아 ` +
+        `${i.samhapElement} 삼합(三合)을 완성합니다. 환경이 통째로 바뀌는 수준의 변곡점으로, ` +
+        `이직·창업·이사·결혼처럼 인생의 큰 방향이 결정되는 사건이 나타날 수 있습니다.`;
+    }
+    if (tier === 1 && i.type === '충') {
+      return `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 강하게 충(沖)합니다. ` +
+        `에너지가 정면으로 부딪히는 형국이라, 건강 문제·이별·사건사고·이사나 이직처럼 ` +
+        `신속하고 뚜렷하게 체감되는 변화가 나타날 수 있습니다.`;
+    }
+    if (tier === 2) {
+      return `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})와(과) 합(合)을 이룹니다. ` +
+        `연애·계약·협력처럼 개인적으로 밀접하게 묶이는 관계가 새롭게 형성될 수 있습니다.`;
+    }
+    return `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})와(과) ${i.type}(${TYPE_HANJA[i.type]})의 ` +
+      `관계를 이룹니다. 조정·수리·갈등·법적 절차처럼 다소 복잡한 양상이 국지적으로 나타날 수 있습니다.`;
+  };
+
+  // 1) 세운 vs (원국+대운) — "무엇이 일어나는가" (핵심 사건 후보)
+  const seyunInteractions = interactions.filter((i) => i.current === '세운');
+  const samhapBySeyun = findSamhapCompletion(baseList, { branchIndex: currentPillars.seyun.branchIndex });
+
+  const coreEvents = [];
+  for (const s of samhapBySeyun) {
+    const item = {
+      current: '세운', currentHanja: pillarLabel(currentPillars.seyun.stemIndex, currentPillars.seyun.branchIndex).hanja,
+      target: s.matchedLabels, targetHanja: '', type: '삼합', detail: s.name,
+      samhapMatch: s.matchedLabels, samhapElement: s.element,
+      tier: 1, tierLabel: TIER_LABEL[1],
+    };
+    item.description = buildTierDescription(item, 1);
+    coreEvents.push(item);
+  }
+  for (const i of seyunInteractions) {
+    const tier = TIER_BY_TYPE[i.type] || 3;
+    const item = { ...i, tier, tierLabel: TIER_LABEL[tier] };
+    item.description = buildTierDescription(item, tier);
+    coreEvents.push(item);
+  }
+  coreEvents.sort((a, b) => a.tier - b.tier);
+
+  // 2) 월운/일운 vs (원국+대운) — "언제 구체화되는가" (시기·촉발)
+  const hasCoreEvent = coreEvents.length > 0;
+  const timingEvents = [];
+
+  for (const label of ['월운', '일운']) {
+    const branchIndex = label === '월운' ? currentPillars.monthlyUn.branchIndex : currentPillars.dailyUn.branchIndex;
+    const hanja = label === '월운'
+      ? pillarLabel(currentPillars.monthlyUn.stemIndex, currentPillars.monthlyUn.branchIndex).hanja
+      : pillarLabel(currentPillars.dailyUn.stemIndex, currentPillars.dailyUn.branchIndex).hanja;
+
+    const samhapHere = findSamhapCompletion(baseList, { branchIndex });
+    for (const s of samhapHere) {
+      const objParticle = pickParticle(s.name, '을', '를');
+      timingEvents.push({
+        current: label, currentHanja: hanja, type: '삼합', detail: s.name,
+        description: hasCoreEvent
+          ? `${label}(${hanja})이(가) 원국·대운의 ${s.matchedLabels}와(과) 결합해 ${s.element} 삼합${objParticle} 완성합니다. ` +
+            `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+          : `${label}(${hanja})이(가) ${s.matchedLabels}와(과) ${s.element} 삼합을 이루지만, 세운에 뚜렷한 형충회합이 없어 ` +
+            `인생을 바꿀 사건보다는 짧게 지나가는 변화 정도로 볼 수 있습니다.`,
+      });
+    }
+
+    const layerInteractions = interactions.filter((i) => i.current === label);
+    for (const i of layerInteractions) {
+      const objParticle = pickParticle(i.target, '을', '를');
+      timingEvents.push({
+        ...i,
+        description: hasCoreEvent
+          ? `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})하며 자극합니다. ` +
+            `세운에서 예고된 사건이 실제로 구체화되는 시점(이 시기)으로 볼 수 있습니다.`
+          : `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})하지만, ` +
+            `세운에 뚜렷한 형충회합이 없어 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`,
+      });
+    }
+  }
+
+  return { coreEvents, timingEvents, hasCoreEvent };
+}
+
+
 
 /**
  * 생년월일시 + 성별로 오늘 기준 전체 사주 해석을 계산한다.
@@ -729,7 +835,7 @@ function interpret(birthDate, gender, today = new Date()) {
   const strength = judgeStrength(fourPillars);
   const yongsin = judgeYongsinFull(fourPillars, dayMasterElement, season, strength);
   const interactions = findInteractions(fourPillars, daewoon, currentPillars);
-  const predictedEvents = predictEvents(fourPillars, interactions);
+  const fortuneNarrative = buildFortuneNarrative(fourPillars, daewoon, currentPillars, interactions);
   const amhap = findAmhap(fourPillars, daewoon, currentPillars);
 
   // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
@@ -752,7 +858,9 @@ function interpret(birthDate, gender, today = new Date()) {
     strength,
     yongsin,
     interactions,
-    predictedEvents,
+    predictedEvents: fortuneNarrative.coreEvents,
+    timingEvents: fortuneNarrative.timingEvents,
+    hasCoreEvent: fortuneNarrative.hasCoreEvent,
     amhap,
     daewoon: {
       ...daewoon,
@@ -784,7 +892,7 @@ module.exports = {
   interpret,
   tenGod,
   findInteractions,
-  predictEvents,
+  buildFortuneNarrative,
   findAmhap,
   STEMS,
   BRANCHES,
