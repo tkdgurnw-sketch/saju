@@ -360,10 +360,13 @@ function judgeGyeokguk(fourPillars) {
 }
 
 /**
- * 신강/신약 판단 — 월지(득령) 가중치를 높게 두고, 나머지 6글자(연간/연지/월간/일지/시간/시지)의
- * 십성이 비겁·인성(신강 방향)인지 식상·재성·관성(신약 방향)인지를 집계하는 간이 버전.
+ * 신강/신약 판단 — 월지(득령) 가중치를 높게 두고, 원국 6글자(연간/연지/월간/일지/시간/시지)에
+ * 더해 대운(대운간·대운지)까지 포함해 십성이 비겁·인성(신강 방향)인지
+ * 식상·재성·관성(신약 방향)인지를 집계하는 간이 버전.
+ * (전통적으로는 원국만으로 판단하는 경우가 많으나, 현재 10년간 지속되는 대운의 영향력도
+ * 신강/신약에 함께 반영하는 방식입니다)
  */
-function judgeStrength(fourPillars) {
+function judgeStrength(fourPillars, daewoonPillar) {
   const dayStemIndex = fourPillars.day.stemIndex;
   const positions = [
     { god: tenGod(dayStemIndex, fourPillars.year.stemIndex), weight: 1 },
@@ -374,6 +377,11 @@ function judgeStrength(fourPillars) {
     { god: tenGod(dayStemIndex, fourPillars.hour.stemIndex), weight: 1 },
     { god: tenGodOfBranch(dayStemIndex, fourPillars.hour.branchIndex), weight: 1 },
   ];
+
+  if (daewoonPillar) {
+    positions.push({ god: tenGod(dayStemIndex, daewoonPillar.stemIndex), weight: 1 });
+    positions.push({ god: tenGodOfBranch(dayStemIndex, daewoonPillar.branchIndex), weight: 1 });
+  }
 
   let supportive = 0;
   let draining = 0;
@@ -966,7 +974,7 @@ function interpret(birthDate, gender, today = new Date()) {
   const season = BRANCH_SEASON[monthPillarToday.branchIndex];
 
   const gyeokguk = judgeGyeokguk(fourPillars);
-  const strength = judgeStrength(fourPillars);
+  const strength = judgeStrength(fourPillars, daewoon);
   const yongsin = judgeYongsinFull(fourPillars, dayMasterElement, season, strength);
   const interactions = findInteractions(fourPillars, daewoon, currentPillars);
   const stemInteractions = findStemInteractions(fourPillars, daewoon, currentPillars);
