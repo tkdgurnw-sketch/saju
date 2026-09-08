@@ -23,6 +23,19 @@ const BRANCH_ELEMENT = ['水', '土', '木', '木', '土', '火', '火', '土', 
 const BRANCH_SEASON = ['겨울', '겨울', '봄', '봄', '봄', '여름', '여름', '여름', '가을', '가을', '가을', '겨울'];
 
 // 오행별 한난(온도)·조습(습도) 성향 점수 (조후 판단용)
+// 오행별 방위·색상·길한 숫자 (하도낙서 오행 배속 기준)
+const ELEMENT_ATTRS = {
+  木: { direction: '동(東)', color: '청색(靑)', numbers: '3, 8' },
+  火: { direction: '남(南)', color: '적색(赤)', numbers: '2, 7' },
+  土: { direction: '중앙(中央)', color: '황색(黃)', numbers: '5, 10' },
+  金: { direction: '서(西)', color: '백색(白)', numbers: '4, 9' },
+  水: { direction: '북(北)', color: '흑색(黑)', numbers: '1, 6' },
+};
+
+function getElementAttrs(element) {
+  return ELEMENT_ATTRS[element] || null;
+}
+
 const ELEMENT_HEAT = { 木: 0, 火: 2, 土: 0, 金: -1, 水: -2 };
 const ELEMENT_WET = { 木: 1, 火: -1, 土: 0, 金: -1, 水: 2 };
 
@@ -1162,6 +1175,7 @@ module.exports = {
   judgeClimate,
   getDaySymbol,
   getSituationPhrase,
+  getElementAttrs,
   STEMS,
   BRANCHES,
   STEM_ELEMENT,

@@ -9,6 +9,15 @@ const DAILY_TTL_DAYS = Number(process.env.DAILY_IMAGE_TTL_DAYS || 7);
 const OUTPUT_DIR = process.env.LOCAL_OUTPUT_DIR || './storage/cropped';
 
 /**
+ * 용신 판정 결과에 오행별 방위·색상·길한 숫자를 덧붙인다. (element가 없으면 그대로 반환)
+ */
+function withElementAttrs(yongsinResult) {
+  if (!yongsinResult) return yongsinResult;
+  const attrs = yongsinResult.element ? sajuEngine.getElementAttrs(yongsinResult.element) : null;
+  return { ...yongsinResult, attrs };
+}
+
+/**
  * 사주 시각화 전체 파이프라인: (생년월일시 계산 또는 수동 입력) → 프롬프트 조립
  * → 이미지 생성 → 크롭/변환 → 저장 → DB 기록
  *
@@ -88,11 +97,11 @@ async function createSajuVisualization(input) {
         draining_score: sajuComputed.strength.drainingScore,
       },
       yongsin: {
-        eokbu: sajuComputed.yongsin.eokbu,
-        johu: sajuComputed.yongsin.johu,
-        tonggwan: sajuComputed.yongsin.tonggwan,
-        byeongyak: sajuComputed.yongsin.byeongyak,
-        jeonwang: sajuComputed.yongsin.jeonwang,
+        eokbu: withElementAttrs(sajuComputed.yongsin.eokbu),
+        johu: withElementAttrs(sajuComputed.yongsin.johu),
+        tonggwan: withElementAttrs(sajuComputed.yongsin.tonggwan),
+        byeongyak: withElementAttrs(sajuComputed.yongsin.byeongyak),
+        jeonwang: withElementAttrs(sajuComputed.yongsin.jeonwang),
       },
       interactions: sajuComputed.interactions.map((i) => ({
         type: i.type,
