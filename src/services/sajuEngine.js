@@ -23,13 +23,13 @@ const BRANCH_ELEMENT = ['水', '土', '木', '木', '土', '火', '火', '土', 
 const BRANCH_SEASON = ['겨울', '겨울', '봄', '봄', '봄', '여름', '여름', '여름', '가을', '가을', '가을', '겨울'];
 
 // 오행별 한난(온도)·조습(습도) 성향 점수 (조후 판단용)
-// 오행별 방위·색상·길한 숫자 (하도낙서 오행 배속 기준)
+// 오행별 방위·색상·길한 숫자·취미·사물 (하도낙서 오행 배속 + 현대적 취미/사물로 확장)
 const ELEMENT_ATTRS = {
-  木: { direction: '동(東)', color: '청색(靑)', numbers: '3, 8' },
-  火: { direction: '남(南)', color: '적색(赤)', numbers: '2, 7' },
-  土: { direction: '중앙(中央)', color: '황색(黃)', numbers: '5, 10' },
-  金: { direction: '서(西)', color: '백색(白)', numbers: '4, 9' },
-  水: { direction: '북(北)', color: '흑색(黑)', numbers: '1, 6' },
+  木: { direction: '동(東)', color: '청색(靑)', numbers: '3, 8', hobby: '원예·식물 가꾸기, 독서, 등산, 목공예', item: '화분이나 나무 소재의 소품, 책' },
+  火: { direction: '남(南)', color: '적색(赤)', numbers: '2, 7', hobby: '요리, 노래·악기 연주, 캠프파이어, 일광욕', item: '양초나 은은한 조명, 붉은 계열 소품' },
+  土: { direction: '중앙(中央)', color: '황색(黃)', numbers: '5, 10', hobby: '도자기·도예, 정원 가꾸기, 명상, 흙과 관련된 활동', item: '도자기 그릇, 황토색 소품, 화분' },
+  金: { direction: '서(西)', color: '백색(白)', numbers: '4, 9', hobby: '헬스·근력 운동, 악기 연주, 재테크, 정리정돈', item: '금속 액세서리(반지·시계), 흰색 소품' },
+  水: { direction: '북(北)', color: '흑색(黑)', numbers: '1, 6', hobby: '수영, 여행, 글쓰기, 명상·요가', item: '어항이나 작은 수조, 거울, 검은색 소품' },
 };
 
 function getElementAttrs(element) {
