@@ -22,6 +22,121 @@ const BRANCH_ELEMENT = ['水', '土', '木', '木', '土', '火', '火', '土', 
 // 지지 → 계절 (근사: 인묘진=봄, 사오미=여름, 신유술=가을, 해자축=겨울)
 const BRANCH_SEASON = ['겨울', '겨울', '봄', '봄', '봄', '여름', '여름', '여름', '가을', '가을', '가을', '겨울'];
 
+// 오행별 한난(온도)·조습(습도) 성향 점수 (조후 판단용)
+const ELEMENT_HEAT = { 木: 0, 火: 2, 土: 0, 金: -1, 水: -2 };
+const ELEMENT_WET = { 木: 1, 火: -1, 土: 0, 金: -1, 水: 2 };
+
+// 일간(천간) → 자연물 상징 (이미지 프롬프트용, 영어)
+const STEM_NATURE = [
+  { noun: 'a towering ancient pine tree', prep: 'beneath' },       // 갑
+  { noun: 'delicate ivy and wildflowers', prep: 'entwined with' }, // 을
+  { noun: 'a blazing sun', prep: 'bathed in the light of' },       // 병
+  { noun: 'a flickering candlelight', prep: 'illuminated by' },    // 정
+  { noun: 'a vast mountain ridge', prep: 'standing upon' },        // 무
+  { noun: 'fertile farmland soil', prep: 'standing upon' },        // 기
+  { noun: 'a raw iron blade', prep: 'beside' },                    // 경
+  { noun: 'a frost-covered gem', prep: 'beside' },                 // 신
+  { noun: 'a vast ocean', prep: 'beside' },                        // 임
+  { noun: 'morning dew on grass', prep: 'surrounded by' },         // 계
+];
+
+// 일지(지지) → 동물 상징 (십이지, 이미지 프롬프트용, 영어)
+const BRANCH_ANIMAL = [
+  'a rat', 'an ox', 'a tiger', 'a rabbit', 'a dragon', 'a snake',
+  'a horse', 'a goat', 'a monkey', 'a rooster', 'a dog', 'a wild boar',
+];
+
+// 한난조습 조합별 배경 자연환경 (영어, 이미지 프롬프트용)
+const LANDSCAPE_BY_CLIMATE = {
+  hot_wet: 'a steaming tropical jungle with mist rising from warm wetlands',
+  hot_dry: 'a scorching desert with cracked earth and shimmering heat haze',
+  hot_neutral: 'a sun-drenched savanna under a blazing sky',
+  cold_wet: 'a frozen misty marsh with icy fog drifting over dark water',
+  cold_dry: 'a windswept snowy tundra beneath a pale frozen sky',
+  cold_neutral: 'a quiet snow-covered pine forest',
+  mild_wet: 'a lush green valley with gentle streams and soft mist',
+  mild_dry: 'a golden rolling hillside under clear skies',
+  mild_neutral: 'a serene grassy plateau under a calm sky',
+};
+
+/**
+ * 원국(4기둥)+대운의 오행 구성으로 한난조습(온도·습도)을 판단하고,
+ * 그에 어울리는 배경 자연환경을 결정한다.
+ */
+function judgeClimate(fourPillars, daewoonPillar) {
+  const elements = [
+    STEM_ELEMENT[fourPillars.year.stemIndex], BRANCH_ELEMENT[fourPillars.year.branchIndex],
+    STEM_ELEMENT[fourPillars.month.stemIndex], BRANCH_ELEMENT[fourPillars.month.branchIndex],
+    STEM_ELEMENT[fourPillars.day.stemIndex], BRANCH_ELEMENT[fourPillars.day.branchIndex],
+    STEM_ELEMENT[fourPillars.hour.stemIndex], BRANCH_ELEMENT[fourPillars.hour.branchIndex],
+    STEM_ELEMENT[daewoonPillar.stemIndex], BRANCH_ELEMENT[daewoonPillar.branchIndex],
+  ];
+
+  let heat = 0;
+  let wet = 0;
+  elements.forEach((e) => { heat += ELEMENT_HEAT[e]; wet += ELEMENT_WET[e]; });
+
+  const heatKey = heat >= 3 ? 'hot' : heat <= -3 ? 'cold' : 'mild';
+  const wetKey = wet >= 3 ? 'wet' : wet <= -3 ? 'dry' : 'neutral';
+  const heatLabel = { hot: '뜨거운', cold: '차가운', mild: '온화한' }[heatKey];
+  const wetLabel = { wet: '습한', dry: '건조한', neutral: '적당히 습한' }[wetKey];
+
+  return {
+    heat, wet, heatLabel, wetLabel,
+    landscape: LANDSCAPE_BY_CLIMATE[`${heatKey}_${wetKey}`],
+  };
+}
+
+/**
+ * 일주(일간+일지)를 자연물+동물 상징으로 표현한다.
+ */
+function getDaySymbol(fourPillars) {
+  const stem = STEM_NATURE[fourPillars.day.stemIndex];
+  const animal = BRANCH_ANIMAL[fourPillars.day.branchIndex];
+  return {
+    animal,
+    stemNoun: stem.noun,
+    stemPrep: stem.prep,
+    subjectPhrase: `${animal} ${stem.prep} ${stem.noun}`,
+  };
+}
+
+// 형충회합 유형별로 일주 동물이 처한 "상황" 묘사 (영어, 이미지 프롬프트용)
+const SITUATION_BY_TYPE = {
+  삼합: (animal) => `${animal} joining together with other creatures in unison, moving as one powerful force`,
+  충: (animal) => `${animal} rearing up in alarm as opposing forces collide violently around it`,
+  천간충: (animal) => `${animal} rearing up in alarm as opposing forces collide violently around it`,
+  합: (animal) => `${animal} peacefully nuzzling close to another gentle presence`,
+  천간합: (animal) => `${animal} peacefully nuzzling close to another gentle presence`,
+  형: (animal) => `${animal} tangled and struggling against twisting thorned vines`,
+  파: (animal) => `${animal} startled as the ground fractures and crumbles beneath it`,
+  해: (animal) => `${animal} glancing warily over its shoulder at an unseen shadow`,
+};
+
+/**
+ * 세운의 핵심 사건(가장 등급이 높은 것)을 일주 동물의 상황으로 연출하고,
+ * 일운의 촉발(재자극)이 있으면 시각적으로 강조하는 문구를 추가한다.
+ */
+function getSituationPhrase(coreEvents, timingEvents, animal) {
+  let situation;
+  if (!coreEvents || coreEvents.length === 0) {
+    situation = `${animal} resting calmly in a tranquil stance`;
+  } else {
+    const top = coreEvents[0]; // tier 오름차순으로 이미 정렬되어 있음 (1이 가장 중요)
+    const builder = SITUATION_BY_TYPE[top.type];
+    situation = builder ? builder(animal) : `${animal} standing alert amid shifting energies`;
+  }
+
+  const dailyTrigger = (timingEvents || []).some((e) => e.current === '일운' && e.reinforces);
+  const intensity = dailyTrigger
+    ? ', dramatically emphasized with vivid intensity, sharp contrast, dynamic motion'
+    : '';
+
+  return situation + intensity;
+}
+
+
+
 const GENERATES = { 木: '火', 火: '土', 土: '金', 金: '水', 水: '木' }; // A가 B를 생함
 const CONTROLS = { 木: '土', 火: '金', 土: '水', 金: '木', 水: '火' }; // A가 B를 극함
 
@@ -980,6 +1095,9 @@ function interpret(birthDate, gender, today = new Date()) {
   const stemInteractions = findStemInteractions(fourPillars, daewoon, currentPillars);
   const fortuneNarrative = buildFortuneNarrative(fourPillars, daewoon, currentPillars, interactions, stemInteractions);
   const amhap = findAmhap(fourPillars, daewoon, currentPillars);
+  const climate = judgeClimate(fourPillars, daewoon);
+  const daySymbol = getDaySymbol(fourPillars);
+  const situationPhrase = getSituationPhrase(fortuneNarrative.coreEvents, fortuneNarrative.timingEvents, daySymbol.animal);
 
   // 일운 이미지 디테일: 오늘 실제로 일어난 형충회합 중 가장 중요한 것을 우선 반영 (형 > 충 > 해 > 합)
   const priority = { 형: 4, 충: 3, 해: 2, 합: 1 };
@@ -1005,6 +1123,9 @@ function interpret(birthDate, gender, today = new Date()) {
     timingEvents: fortuneNarrative.timingEvents,
     hasCoreEvent: fortuneNarrative.hasCoreEvent,
     amhap,
+    climate,
+    daySymbol,
+    situationPhrase,
     daewoon: {
       ...daewoon,
       description: daewoon.periodIndex === 0
@@ -1038,6 +1159,9 @@ module.exports = {
   findStemInteractions,
   buildFortuneNarrative,
   findAmhap,
+  judgeClimate,
+  getDaySymbol,
+  getSituationPhrase,
   STEMS,
   BRANCHES,
   STEM_ELEMENT,

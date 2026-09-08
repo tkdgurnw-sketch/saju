@@ -1,6 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/db');
-const { buildSajuPrompt } = require('./promptEngine');
+const { buildSajuPrompt, buildSajuPromptFromReading } = require('./promptEngine');
 const sajuEngine = require('./sajuEngine');
 const imageProvider = require('./imageProvider');
 const { processProviderResult, persistQuadrants } = require('./imageProcessor');
@@ -45,10 +45,9 @@ async function createSajuVisualization(input) {
 
     promptInput = {
       style,
-      coreElement: sajuComputed.coreElement,
-      luckState: sajuComputed.luckState,
-      season: sajuComputed.season,
-      dailyDetail: sajuComputed.dailyDetail,
+      climate: sajuComputed.climate,
+      daySymbol: sajuComputed.daySymbol,
+      situationPhrase: sajuComputed.situationPhrase,
     };
 
     analysisDetails = {
@@ -144,6 +143,11 @@ async function createSajuVisualization(input) {
       seyun: { name: `${sajuComputed.seyun.label.korean}(${sajuComputed.seyun.label.hanja}) 세운` },
       monthly_un: { name: `${sajuComputed.monthlyUn.label.korean}(${sajuComputed.monthlyUn.label.hanja}) 월운` },
       daily_un: { name: `${sajuComputed.dailyUn.label.korean}(${sajuComputed.dailyUn.label.hanja}) 일운` },
+      image_concept: {
+        climate: `${sajuComputed.climate.heatLabel} · ${sajuComputed.climate.wetLabel}`,
+        day_symbol: sajuComputed.daySymbol.subjectPhrase,
+        situation: sajuComputed.situationPhrase,
+      },
     };
 
     if (!analysisSummary) {
@@ -164,7 +168,9 @@ async function createSajuVisualization(input) {
   }
 
   // 1. 프롬프트 조립
-  const { prompt } = buildSajuPrompt(promptInput);
+  const { prompt } = birthDateTime
+    ? buildSajuPromptFromReading(promptInput)
+    : buildSajuPrompt(promptInput);
 
   // 2. 이미지 생성 (정식 API)
   const providerResult = await imageProvider.generateImage(prompt);

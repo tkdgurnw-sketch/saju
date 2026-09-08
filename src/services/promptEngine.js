@@ -42,6 +42,7 @@ const DAILY_DETAIL = {
 };
 
 /**
+ * (수동 모드 전용, 하위 호환) 사용자가 오행/기운/일운을 직접 고르는 경우에 사용.
  * @param {Object} params
  * @param {'ORIENTAL'|'MINIMAL'|'3D'} params.style
  * @param {string} params.coreElement   - 원국 오행 (木/火/土/金/水)
@@ -72,4 +73,33 @@ function buildSajuPrompt({ style, coreElement, luckState, season, dailyDetail })
   return { prompt, contentDescription };
 }
 
-module.exports = { buildSajuPrompt, STYLE_TEMPLATES };
+/**
+ * (자동 계산 모드 전용) 만세력 해석 결과를 그대로 이미지로 옮긴다.
+ * - 배경: 원국+대운의 한난조습으로 결정된 자연환경
+ * - 주인공: 일주(일간+일지)를 자연물+동물로 상징화
+ * - 상황: 세운의 핵심 사건을 동물의 상태/행동으로 연출
+ * - 강조: 일운이 그 사건을 재자극(촉발)하면 시각적으로 강하게 표현
+ *
+ * @param {Object} params
+ * @param {'ORIENTAL'|'MINIMAL'|'3D'} params.style
+ * @param {Object} params.climate         - sajuEngine.judgeClimate() 결과 (landscape 포함)
+ * @param {Object} params.daySymbol       - sajuEngine.getDaySymbol() 결과 (subjectPhrase 포함)
+ * @param {string} params.situationPhrase - sajuEngine.getSituationPhrase() 결과
+ * @returns {{ prompt: string, contentDescription: string }}
+ */
+function buildSajuPromptFromReading({ style, climate, daySymbol, situationPhrase }) {
+  const styleFn = STYLE_TEMPLATES[style];
+  if (!styleFn) {
+    throw new Error(`지원하지 않는 스타일입니다: ${style}`);
+  }
+  if (!climate || !daySymbol || !situationPhrase) {
+    throw new Error('이미지 조립에 필요한 만세력 해석 데이터가 부족합니다.');
+  }
+
+  const contentDescription = `${daySymbol.subjectPhrase} in ${climate.landscape}, ${situationPhrase}`;
+  const prompt = styleFn(contentDescription);
+
+  return { prompt, contentDescription };
+}
+
+module.exports = { buildSajuPrompt, buildSajuPromptFromReading, STYLE_TEMPLATES };
