@@ -1029,6 +1029,12 @@ const TYPE_HANJA = { 충: '沖', 합: '合', 형: '刑', 파: '破', 해: '害' 
  * "무엇이 일어나는가(세운 vs 원국+대운)"와 "언제 구체화되는가(월운·일운 vs 원국+대운)"를
  * 구분해서 해석한다. (임상 통변 방식을 간이화한 참고용 해석)
  */
+// 형충회합 유형의 성격 — 화합(合) 계열인지 충돌(沖) 계열인지
+const VALENCE_BY_TYPE = {
+  삼합: 'harmony', 합: 'harmony', 천간합: 'harmony',
+  충: 'conflict', 형: 'conflict', 파: 'conflict', 해: 'conflict', 천간충: 'conflict',
+};
+
 function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, interactions, stemInteractions) {
   const baseList = [
     { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
@@ -1085,6 +1091,13 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
   const attackerStemIndices = new Set();
   const victimStemIndices = new Set();
   const samhapMaterialBranchIndices = new Set(); // 삼합 재료(공수 구분 없음)
+  const branchValenceMap = new Map(); // branchIndex → Set('harmony'|'conflict') — 그 글자가 세운에서 어떤 성격으로 쓰였는지
+  const stemValenceMap = new Map();
+
+  const addValence = (map, key, valence) => {
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(valence);
+  };
 
   for (const s of samhapBySeyun) {
     const item = {
@@ -1095,7 +1108,10 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     };
     item.description = buildTierDescription(item, 1);
     coreEvents.push(item);
-    s.involvedBranchIndices.forEach((b) => { coreBranchIndices.add(b); samhapMaterialBranchIndices.add(b); });
+    s.involvedBranchIndices.forEach((b) => {
+      coreBranchIndices.add(b); samhapMaterialBranchIndices.add(b);
+      addValence(branchValenceMap, b, 'harmony');
+    });
   }
   for (const i of seyunInteractions) {
     const tier = TIER_BY_TYPE[i.type] || 3;
@@ -1106,6 +1122,9 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     coreBranchIndices.add(i.targetBranchIndex);
     attackerBranchIndices.add(i.currentBranchIndex);
     victimBranchIndices.add(i.targetBranchIndex);
+    const valence = VALENCE_BY_TYPE[i.type] || 'conflict';
+    addValence(branchValenceMap, i.currentBranchIndex, valence);
+    addValence(branchValenceMap, i.targetBranchIndex, valence);
   }
   for (const i of seyunStemInteractions) {
     const tier = i.isDayMaster ? 1 : 2;
@@ -1116,6 +1135,9 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
     coreStemIndices.add(i.targetStemIndex);
     attackerStemIndices.add(i.currentStemIndex);
     victimStemIndices.add(i.targetStemIndex);
+    const valence = VALENCE_BY_TYPE[i.type] || 'conflict';
+    addValence(stemValenceMap, i.currentStemIndex, valence);
+    addValence(stemValenceMap, i.targetStemIndex, valence);
   }
   coreEvents.sort((a, b) => a.tier - b.tier);
 
@@ -1160,19 +1182,36 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
                    (victimBranchIndices.has(i.targetBranchIndex) ? 'victim' : null) ||
                    (samhapMaterialBranchIndices.has(i.currentBranchIndex) ? 'material' : null);
       const reinforces = role !== null;
-      const roleTail = role === 'attacker'
-        ? '세운의 그 기운 자체가 이 시기에 다시 강하게 작동한다는 뜻으로, 세운이 예고한 흐름이 재확인됩니다.'
-        : role === 'victim'
-          ? '세운에게 얻어맞았던 바로 그 자리(원국·대운)가 이 시기에 또 한 번 직접 흔들린다는 뜻으로, 피해·변화가 그 영역에 집중됩니다.'
-          : '세운 재료가 다시 얽히는 신호로, 사건이 구체화되는 시점으로 볼 수 있습니다.';
-      timingEvents.push({
-        ...i,
-        reinforces, role,
-        description: reinforces
-          ? `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})합니다. ${roleTail}`
-          : `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})하지만, ` +
-            `세운 사건에 쓰인 글자와는 무관해 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`,
-      });
+
+      // 재현된 그 글자가 세운에서 화합(合) 계열로 쓰였는지 충돌(沖) 계열로 쓰였는지와,
+      // 지금 이 시기의 작용이 같은 성격인지 반대 성격인지 비교한다.
+      const matchedBranch = role === 'attacker' ? i.currentBranchIndex
+        : (victimBranchIndices.has(i.targetBranchIndex) ? i.targetBranchIndex : i.currentBranchIndex);
+      const coreValences = branchValenceMap.get(matchedBranch);
+      const thisValence = VALENCE_BY_TYPE[i.type] || 'conflict';
+      const isReversal = reinforces && coreValences && !coreValences.has(thisValence);
+
+      let description;
+      if (isReversal && coreValences.has('harmony')) {
+        description = `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})합니다. ` +
+          `세운이 맺어놓았던 화합(合)이 이번 시기에 흔들립니다. 순조롭게 이어지던 관계나 결합에 균열이 생기거나, ` +
+          `다시 조율이 필요한 상황이 올 수 있습니다.`;
+      } else if (isReversal && coreValences.has('conflict')) {
+        description = `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})합니다. ` +
+          `세운에서 벌어졌던 충돌이 이번 시기에 화합으로 누그러집니다. 갈등이 완화되거나 화해·타협의 계기가 마련될 수 있습니다.`;
+      } else if (reinforces) {
+        const roleTail = role === 'attacker'
+          ? '세운의 그 기운 자체가 이 시기에 다시 강하게 작동한다는 뜻으로, 세운이 예고한 흐름이 재확인됩니다.'
+          : role === 'victim'
+            ? '세운에게 얻어맞았던 바로 그 자리(원국·대운)가 이 시기에 또 한 번 직접 흔들린다는 뜻으로, 피해·변화가 그 영역에 집중됩니다.'
+            : '세운 재료가 다시 얽히는 신호로, 사건이 구체화되는 시점으로 볼 수 있습니다.';
+        description = `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} 다시 ${i.type}(${TYPE_HANJA[i.type] || ''})합니다. ${roleTail}`;
+      } else {
+        description = `${i.current}(${i.currentHanja})이(가) ${i.target}(${i.targetHanja})${objParticle} ${i.type}(${TYPE_HANJA[i.type] || ''})하지만, ` +
+          `세운 사건에 쓰인 글자와는 무관해 하루·한 달 내 지나가는 가벼운 해프닝(사소한 다툼, 자잘한 지출, 일시적 기분 변화 등) 수준에 그칠 가능성이 높습니다.`;
+      }
+
+      timingEvents.push({ ...i, reinforces, role: isReversal ? 'reversal' : role, description });
     }
 
     const layerStemInteractions = stemInteractions.filter((i) => i.current === label);
@@ -1182,17 +1221,31 @@ function buildFortuneNarrative(fourPillars, daewoonPillar, currentPillars, inter
       const role = classifyRole(i.currentStemIndex, attackerStemIndices, victimStemIndices) ||
                    (victimStemIndices.has(i.targetStemIndex) ? 'victim' : null);
       const reinforces = role !== null;
-      const roleTail = role === 'attacker'
-        ? '세운 천간의 그 기운 자체가 이 시기에 다시 강하게 작동합니다.'
-        : '세운에게 작용을 받았던 바로 그 천간 자리가 이 시기에 또 한 번 직접 흔들립니다.';
-      timingEvents.push({
-        ...i,
-        reinforces, role,
-        description: reinforces
-          ? `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)합니다' : objParticle + ' 다시 충(沖)합니다'}. ${roleTail}`
-          : `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
-            `세운 사건에 쓰인 천간과는 무관해 ${i.isDayMaster ? '하루·한 달 내의 심경 변화 정도' : '가벼운 해프닝 수준'}에 그칠 가능성이 높습니다.`,
-      });
+
+      const matchedStem = role === 'attacker' ? i.currentStemIndex
+        : (victimStemIndices.has(i.targetStemIndex) ? i.targetStemIndex : i.currentStemIndex);
+      const coreValences = stemValenceMap.get(matchedStem);
+      const thisValence = VALENCE_BY_TYPE[i.type] || 'conflict';
+      const isReversal = reinforces && coreValences && !coreValences.has(thisValence);
+
+      let description;
+      if (isReversal && coreValences.has('harmony')) {
+        description = `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
+          `세운이 맺어놓았던 화합이 이번 시기에 흔들립니다. 순조롭던 관계나 결합에 균열이 생기거나 재조율이 필요할 수 있습니다.`;
+      } else if (isReversal && coreValences.has('conflict')) {
+        description = `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
+          `세운에서 벌어졌던 충돌이 이번 시기에 화합으로 누그러지며, 갈등 완화나 화해의 계기가 마련될 수 있습니다.`;
+      } else if (reinforces) {
+        const roleTail = role === 'attacker'
+          ? '세운 천간의 그 기운 자체가 이 시기에 다시 강하게 작동합니다.'
+          : '세운에게 작용을 받았던 바로 그 천간 자리가 이 시기에 또 한 번 직접 흔들립니다.';
+        description = `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 다시 합(合)합니다' : objParticle + ' 다시 충(沖)합니다'}. ${roleTail}`;
+      } else {
+        description = `${i.current}(${i.currentHanja})의 천간이 ${targetPhrase}(${i.targetHanja})${i.type === '천간합' ? '과 합(合)합니다' : objParticle + ' 충(沖)합니다'}. ` +
+          `세운 사건에 쓰인 천간과는 무관해 ${i.isDayMaster ? '하루·한 달 내의 심경 변화 정도' : '가벼운 해프닝 수준'}에 그칠 가능성이 높습니다.`;
+      }
+
+      timingEvents.push({ ...i, reinforces, role: isReversal ? 'reversal' : role, description });
     }
   }
 
