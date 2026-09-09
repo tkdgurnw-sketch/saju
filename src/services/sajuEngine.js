@@ -830,8 +830,18 @@ const STEM_POSITION_DOMAIN = {
  * 지금 흐르는 대운이 원국(연/월/일/시주)과 어떤 형충회합을 이루는지 분석해,
  * 이 10년간 원국이 어떻게 변화하는지 해석한다. (사주 원국 설명 보충용)
  */
+// 십성 그룹별 구체적인 사례 (대운 해석 보충용)
+const TEN_GOD_GROUP_EXAMPLES = {
+  비겁: '동업이나 협업 제안, 친구·형제와의 갈등 혹은 의기투합, 경쟁 상황의 심화',
+  식상: '이직이나 이사, 자녀와 관련된 소식, 창작·발표 등 표현 활동의 변화',
+  재성: '급여·투자의 변동, 예상치 못한 지출이나 수입, 이성과의 만남이나 갈등',
+  관성: '승진이나 인사이동, 계약·소송 관련 이슈, 조직 내 위치·책임의 변화',
+  인성: '자격증·학업 관련 소식, 중요한 문서·계약, 부동산이나 어머니·스승과 관련된 일',
+};
+
 function getDaewoonEffectOnChart(fourPillars, daewoonPillar) {
   const daewoonHanja = pillarLabel(daewoonPillar.stemIndex, daewoonPillar.branchIndex).hanja;
+  const dayStemIndex = fourPillars.day.stemIndex;
   const branchTargets = [
     { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
     { label: '월지', branchIndex: fourPillars.month.branchIndex, hanja: BRANCH_HANJA[fourPillars.month.branchIndex] },
@@ -871,24 +881,37 @@ function getDaewoonEffectOnChart(fourPillars, daewoonPillar) {
       }
     }
     if (type) {
-      items.push({ target: tgt.label, targetHanja: tgt.hanja, type, detail, domain: POSITION_DOMAIN[tgt.label] });
+      const godName = tenGodOfBranch(dayStemIndex, tgt.branchIndex);
+      const godGroup = TEN_GOD_GROUP[godName] || '비겁';
+      items.push({
+        target: tgt.label, targetHanja: tgt.hanja, type, detail, domain: POSITION_DOMAIN[tgt.label],
+        tenGod: godName, tenGodGroup: godGroup,
+      });
     }
   }
 
   for (const tgt of stemTargets) {
     if (daewoonPillar.stemIndex === tgt.stemIndex) continue;
+    const godName = tenGod(dayStemIndex, tgt.stemIndex);
+    const godGroup = TEN_GOD_GROUP[godName] || '비겁';
     const combo = STEM_COMBINE_PAIRS.find(
       (c) => (c.pair[0] === daewoonPillar.stemIndex && c.pair[1] === tgt.stemIndex) ||
              (c.pair[1] === daewoonPillar.stemIndex && c.pair[0] === tgt.stemIndex)
     );
     if (combo) {
-      items.push({ target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], type: '천간합', resultElement: combo.result, domain: STEM_POSITION_DOMAIN[tgt.label] });
+      items.push({
+        target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], type: '천간합', resultElement: combo.result,
+        domain: STEM_POSITION_DOMAIN[tgt.label], tenGod: godName, tenGodGroup: godGroup,
+      });
     }
     const isClash = STEM_CLASH_PAIRS.some(
       ([a, b]) => (a === daewoonPillar.stemIndex && b === tgt.stemIndex) || (b === daewoonPillar.stemIndex && a === tgt.stemIndex)
     );
     if (isClash) {
-      items.push({ target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], type: '천간충', domain: STEM_POSITION_DOMAIN[tgt.label] });
+      items.push({
+        target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], type: '천간충',
+        domain: STEM_POSITION_DOMAIN[tgt.label], tenGod: godName, tenGodGroup: godGroup,
+      });
     }
   }
 
@@ -908,8 +931,9 @@ function getDaewoonEffectOnChart(fourPillars, daewoonPillar) {
   const sentences = items.map((it) => {
     const action = TYPE_ACTION[it.type] || '자극하여';
     const objParticle = pickParticle(it.target, '을', '를');
-    return `대운(${daewoonHanja})이 ${it.target}(${it.targetHanja})${objParticle} ${action}, ` +
-      `이 10년간 ${it.domain}에 지속적인 변화가 나타날 수 있습니다.`;
+    const example = TEN_GOD_GROUP_EXAMPLES[it.tenGodGroup] || '크고 작은 환경 변화';
+    return `대운(${daewoonHanja})이 ${it.target}(${it.targetHanja}, ${it.tenGodGroup})${objParticle} ${action}, ` +
+      `이 10년간 ${it.domain}에서 변화가 지속됩니다. 구체적으로는 ${example} 등의 형태로 나타날 수 있습니다.`;
   });
 
   return {
