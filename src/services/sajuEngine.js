@@ -818,6 +818,107 @@ function findStemInteractions(fourPillars, daewoonPillar, currentPillars) {
   return results;
 }
 
+// 천간 자리(연간/월간/일간/시간)가 뜻하는 인생 영역
+const STEM_POSITION_DOMAIN = {
+  연간: '조상·어린 시절·초년운과 관련된 영역',
+  월간: '부모형제·사회 초년·직장 기반과 관련된 영역',
+  일간: '본인 자신의 정체성·건강·의사결정과 관련된 영역',
+  시간: '자녀·아랫사람·말년운과 관련된 영역',
+};
+
+/**
+ * 지금 흐르는 대운이 원국(연/월/일/시주)과 어떤 형충회합을 이루는지 분석해,
+ * 이 10년간 원국이 어떻게 변화하는지 해석한다. (사주 원국 설명 보충용)
+ */
+function getDaewoonEffectOnChart(fourPillars, daewoonPillar) {
+  const daewoonHanja = pillarLabel(daewoonPillar.stemIndex, daewoonPillar.branchIndex).hanja;
+  const branchTargets = [
+    { label: '연지', branchIndex: fourPillars.year.branchIndex, hanja: BRANCH_HANJA[fourPillars.year.branchIndex] },
+    { label: '월지', branchIndex: fourPillars.month.branchIndex, hanja: BRANCH_HANJA[fourPillars.month.branchIndex] },
+    { label: '일지', branchIndex: fourPillars.day.branchIndex, hanja: BRANCH_HANJA[fourPillars.day.branchIndex] },
+    { label: '시지', branchIndex: fourPillars.hour.branchIndex, hanja: BRANCH_HANJA[fourPillars.hour.branchIndex] },
+  ];
+  const stemTargets = [
+    { label: '연간', stemIndex: fourPillars.year.stemIndex },
+    { label: '월간', stemIndex: fourPillars.month.stemIndex },
+    { label: '일간', stemIndex: fourPillars.day.stemIndex },
+    { label: '시간', stemIndex: fourPillars.hour.stemIndex },
+  ];
+
+  const pairMatch = (pairs, a, b) => pairs.some(([x, y]) => (x === a && y === b) || (y === a && x === b));
+  const items = [];
+
+  for (const tgt of branchTargets) {
+    let type = null;
+    let detail = null;
+    if (daewoonPillar.branchIndex === tgt.branchIndex && BRANCH_SELF_PUNISH.includes(tgt.branchIndex)) {
+      type = '형'; detail = '자형';
+    } else if (pairMatch(BRANCH_CLASH_PAIRS, daewoonPillar.branchIndex, tgt.branchIndex)) {
+      type = '충';
+    } else if (pairMatch(BRANCH_COMBINE_PAIRS, daewoonPillar.branchIndex, tgt.branchIndex)) {
+      type = '합';
+    } else if (pairMatch(BRANCH_BREAK_PAIRS, daewoonPillar.branchIndex, tgt.branchIndex)) {
+      type = '파';
+    } else if (pairMatch(BRANCH_HARM_PAIRS, daewoonPillar.branchIndex, tgt.branchIndex)) {
+      type = '해';
+    } else if (pairMatch(BRANCH_MUTUAL_PUNISH_PAIRS, daewoonPillar.branchIndex, tgt.branchIndex)) {
+      type = '형'; detail = '상형';
+    } else {
+      for (const group of BRANCH_TRIPLE_PUNISH_GROUPS) {
+        if (group.includes(daewoonPillar.branchIndex) && group.includes(tgt.branchIndex) && daewoonPillar.branchIndex !== tgt.branchIndex) {
+          type = '형'; detail = '삼형';
+        }
+      }
+    }
+    if (type) {
+      items.push({ target: tgt.label, targetHanja: tgt.hanja, type, detail, domain: POSITION_DOMAIN[tgt.label] });
+    }
+  }
+
+  for (const tgt of stemTargets) {
+    if (daewoonPillar.stemIndex === tgt.stemIndex) continue;
+    const combo = STEM_COMBINE_PAIRS.find(
+      (c) => (c.pair[0] === daewoonPillar.stemIndex && c.pair[1] === tgt.stemIndex) ||
+             (c.pair[1] === daewoonPillar.stemIndex && c.pair[0] === tgt.stemIndex)
+    );
+    if (combo) {
+      items.push({ target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], type: '천간합', resultElement: combo.result, domain: STEM_POSITION_DOMAIN[tgt.label] });
+    }
+    const isClash = STEM_CLASH_PAIRS.some(
+      ([a, b]) => (a === daewoonPillar.stemIndex && b === tgt.stemIndex) || (b === daewoonPillar.stemIndex && a === tgt.stemIndex)
+    );
+    if (isClash) {
+      items.push({ target: tgt.label, targetHanja: STEM_HANJA[tgt.stemIndex], type: '천간충', domain: STEM_POSITION_DOMAIN[tgt.label] });
+    }
+  }
+
+  if (items.length === 0) {
+    return {
+      hasEffect: false, items: [],
+      summary: `지금 흐르는 대운(${daewoonHanja})은 원국의 연·월·일·시주와 직접적인 형충회합 없이, ` +
+        `비교적 안정적으로 원국의 기존 흐름을 이어가는 10년입니다.`,
+    };
+  }
+
+  const TYPE_ACTION = {
+    충: '강하게 충돌시켜', 합: '부드럽게 결합시켜', 형: '날카롭게 부딪히게 하여',
+    파: '조금씩 흔들어 깨뜨려', 해: '은근히 훼방을 놓아',
+    천간합: '표면적으로 결합시켜', 천간충: '정면으로 충돌시켜',
+  };
+  const sentences = items.map((it) => {
+    const action = TYPE_ACTION[it.type] || '자극하여';
+    const objParticle = pickParticle(it.target, '을', '를');
+    return `대운(${daewoonHanja})이 ${it.target}(${it.targetHanja})${objParticle} ${action}, ` +
+      `이 10년간 ${it.domain}에 지속적인 변화가 나타날 수 있습니다.`;
+  });
+
+  return {
+    hasEffect: true,
+    items,
+    summary: sentences.join(' '),
+  };
+}
+
 function findAmhap(fourPillars, daewoonPillar, currentPillars) {
   const dayBranchIndex = fourPillars.day.branchIndex;
   const dayHidden = BRANCH_HIDDEN_STEMS[dayBranchIndex];
@@ -1108,6 +1209,7 @@ function interpret(birthDate, gender, today = new Date()) {
   const stemInteractions = findStemInteractions(fourPillars, daewoon, currentPillars);
   const fortuneNarrative = buildFortuneNarrative(fourPillars, daewoon, currentPillars, interactions, stemInteractions);
   const amhap = findAmhap(fourPillars, daewoon, currentPillars);
+  const daewoonEffect = getDaewoonEffectOnChart(fourPillars, daewoon);
   const climate = judgeClimate(fourPillars, daewoon);
   const daySymbol = getDaySymbol(fourPillars);
   const situationPhrase = getSituationPhrase(fortuneNarrative.coreEvents, fortuneNarrative.timingEvents, daySymbol.animal);
@@ -1136,6 +1238,7 @@ function interpret(birthDate, gender, today = new Date()) {
     timingEvents: fortuneNarrative.timingEvents,
     hasCoreEvent: fortuneNarrative.hasCoreEvent,
     amhap,
+    daewoonEffect,
     climate,
     daySymbol,
     situationPhrase,
@@ -1176,6 +1279,7 @@ module.exports = {
   getDaySymbol,
   getSituationPhrase,
   getElementAttrs,
+  getDaewoonEffectOnChart,
   STEMS,
   BRANCHES,
   STEM_ELEMENT,

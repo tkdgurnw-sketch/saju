@@ -152,6 +152,10 @@ async function createSajuVisualization(input) {
       seyun: { name: `${sajuComputed.seyun.label.korean}(${sajuComputed.seyun.label.hanja}) 세운` },
       monthly_un: { name: `${sajuComputed.monthlyUn.label.korean}(${sajuComputed.monthlyUn.label.hanja}) 월운` },
       daily_un: { name: `${sajuComputed.dailyUn.label.korean}(${sajuComputed.dailyUn.label.hanja}) 일운` },
+      daewoon_effect: {
+        has_effect: sajuComputed.daewoonEffect.hasEffect,
+        summary: sajuComputed.daewoonEffect.summary,
+      },
       image_concept: {
         climate: `${sajuComputed.climate.heatLabel} · ${sajuComputed.climate.wetLabel}`,
         day_symbol: sajuComputed.daySymbol.subjectPhrase,
@@ -160,9 +164,11 @@ async function createSajuVisualization(input) {
     };
 
     if (!analysisSummary) {
-      const interactionNote = sajuComputed.interactions.length > 0
-        ? ` 오늘은 원국과 ${sajuComputed.interactions.length}건의 형충회합이 감지됩니다.`
-        : ' 오늘은 원국과 특별한 형충회합이 없는 평온한 날입니다.';
+      // 실제로 의미 있는 트리거(핵심 사건)가 있을 때만 형충회합을 언급 — 그렇지 않으면
+      // "순조로운 하루입니다"와 "형충회합이 감지됩니다"가 같이 나와 모순돼 보이는 것을 방지
+      const interactionNote = sajuComputed.hasCoreEvent
+        ? ` 오늘은 원국·대운과 관련해 형충회합이 감지되어 변화의 기운이 있는 하루입니다.`
+        : '';
       analysisSummary =
         `일간 ${sajuComputed.coreElement} 기운, ${sajuComputed.gyeokguk.name}·${sajuComputed.strength.isStrong ? '신강' : '신약'} 사주이며 ` +
         `억부용신은 ${sajuComputed.yongsin.eokbu.element}입니다. 오늘은 ${sajuComputed.season} 절기의 ` +
