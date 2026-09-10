@@ -34,7 +34,7 @@ function withElementAttrs(yongsinResult) {
 async function createSajuVisualization(input) {
   const {
     userId, style, sajuType,
-    birthDateTime, gender,
+    birthDateTime, gender, referenceDate,
     coreElement, luckState, dailyDetail,
     analysisSummary: manualSummary, analysisDetails: manualDetails,
   } = input;
@@ -50,7 +50,18 @@ async function createSajuVisualization(input) {
     if (Number.isNaN(birth.getTime())) {
       throw new Error('birthDateTime 형식이 올바르지 않습니다.');
     }
-    sajuComputed = sajuEngine.interpret(birth, gender === 'F' ? 'F' : 'M');
+
+    // 특정일 운세 조회: referenceDate가 있으면 오늘 대신 그 날짜를 기준으로 세운/월운/일운/대운을 계산
+    let today = new Date();
+    if (referenceDate) {
+      const parsed = new Date(referenceDate);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new Error('referenceDate 형식이 올바르지 않습니다.');
+      }
+      today = parsed;
+    }
+
+    sajuComputed = sajuEngine.interpret(birth, gender === 'F' ? 'F' : 'M', today);
 
     promptInput = {
       style,

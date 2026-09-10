@@ -34,7 +34,7 @@ router.post('/visualize', async (req, res) => {
   try {
     const {
       userId, userName, style, sajuType,
-      birthDateTime, gender,
+      birthDateTime, gender, referenceDate,
       coreElement, luckState, dailyDetail,
       analysisSummary, analysisDetails,
     } = req.body;
@@ -51,7 +51,7 @@ router.post('/visualize', async (req, res) => {
 
     const { row, prompt, sajuComputed } = await createSajuVisualization({
       userId, style, sajuType,
-      birthDateTime, gender,
+      birthDateTime, gender, referenceDate,
       coreElement, luckState, dailyDetail,
       analysisSummary, analysisDetails,
     });
