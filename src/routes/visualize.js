@@ -50,7 +50,7 @@ router.post('/visualize', async (req, res) => {
     }
 
     const { row, prompt, sajuComputed } = await createSajuVisualization({
-      userId, style, sajuType,
+      userId, userName, style, sajuType,
       birthDateTime, gender, referenceDate,
       coreElement, luckState, dailyDetail,
       analysisSummary, analysisDetails,

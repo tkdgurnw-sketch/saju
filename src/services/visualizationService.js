@@ -34,7 +34,7 @@ function withElementAttrs(yongsinResult) {
  */
 async function createSajuVisualization(input) {
   const {
-    userId, style, sajuType,
+    userId, userName, style, sajuType,
     birthDateTime, gender, referenceDate,
     coreElement, luckState, dailyDetail,
     analysisSummary: manualSummary, analysisDetails: manualDetails,
@@ -177,7 +177,7 @@ async function createSajuVisualization(input) {
 
     if (!analysisSummary) {
       // 1차: Gemini에게 자연스러운 사주풀이 생성을 요청
-      const geminiNarrative = await geminiService.generateSajuNarrative(sajuComputed);
+      const geminiNarrative = await geminiService.generateSajuNarrative(sajuComputed, userName);
 
       if (geminiNarrative) {
         analysisSummary = geminiNarrative;

@@ -24,8 +24,12 @@ function endpointFor(model) {
 /**
  * 계산된 사주 데이터를 사람이 읽기 좋은 프롬프트로 정리한다.
  */
-function buildPrompt(sajuComputed) {
+/**
+ * @param {string} userName
+ */
+function buildPrompt(sajuComputed, userName) {
   const p = sajuComputed;
+  const displayName = (userName || '').trim();
 
   const fourPillarsText =
     `연주 ${p.fourPillars.year.label.korean}(${p.fourPillars.year.label.hanja}), ` +
@@ -78,20 +82,24 @@ ${timingEventsText}
 2. 원국의 그릇(격국·신강신약·용신)을 먼저 짚어주고, 그 바탕 위에서 지금 대운의 방향, 그리고 오늘 세운·월운·일운에서 일어나는 구체적 사건을 자연스럽게 이어서 설명
 3. 전문 용어(격국명, 오행 등)를 쓰되, 일반인이 이해할 수 있도록 풀어서 설명
 4. 과도하게 위협적이거나 확정적인 말투(반드시 그렇게 된다 등)는 피하고, "~할 수 있습니다", "~한 시기입니다" 처럼 참고할 수 있는 어조로 작성
-5. 한국어로만 작성`;
+5. 호칭: "의뢰인", "귀하" 같은 격식체 대신, 아래 이름에서 성(姓)을 뗀 이름 부분 + "님"으로 문단을 시작하고 그 뒤에도 필요하면 같은 호칭을 사용
+   - 예: 이름이 "홍길동"이면 → "길동님은..."으로 시작 (성 "홍"은 빼고 이름 "길동"만 사용)
+   - 이름이 "남궁민수"처럼 두 글자 복성이면 → "민수님"처럼 나머지 이름만 사용
+   - 조회 대상 이름: "${displayName || '방문자'}"
+6. 한국어로만 작성`;
 }
 
 /**
  * @param {Object} sajuComputed - sajuEngine.interpret()의 반환값
  * @returns {Promise<string|null>} 성공 시 사주풀이 문단, 실패 시 null
  */
-async function generateSajuNarrative(sajuComputed) {
+async function generateSajuNarrative(sajuComputed, userName) {
   if (!GEMINI_API_KEY) {
     console.warn('[gemini] GEMINI_API_KEY가 설정되지 않아 규칙 기반 문장으로 대체합니다.');
     return null;
   }
 
-  const prompt = buildPrompt(sajuComputed);
+  const prompt = buildPrompt(sajuComputed, userName);
 
   for (const model of GEMINI_MODEL_CANDIDATES) {
     try {
