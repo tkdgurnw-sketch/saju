@@ -101,7 +101,7 @@ async function generateSajuNarrative(sajuComputed) {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { maxOutputTokens: 4096 },
         },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 20_000 }
+        { headers: { 'Content-Type': 'application/json' }, timeout: 45_000 }
       );
 
       const candidate = response.data?.candidates?.[0];
@@ -114,12 +114,15 @@ async function generateSajuNarrative(sajuComputed) {
       console.warn(`[gemini] ${model} 응답에 텍스트가 없어 다음 후보로 재시도합니다.`);
     } catch (err) {
       const status = err.response?.status;
+      const isNetworkOrTimeout = !err.response; // 응답 자체를 못 받은 경우 (타임아웃, 연결 오류 등)
       const isOverloaded = status === 503 || err.response?.data?.error?.status === 'UNAVAILABLE';
+      const isRetryable = isOverloaded || status === 429 || status === 500 || isNetworkOrTimeout;
       console.warn(
-        `[gemini] ${model} 호출 실패(${status || err.message})${isOverloaded ? ' — 과부하, 다음 후보 모델로 재시도합니다.' : ''}`
+        `[gemini] ${model} 호출 실패(${status || err.code || err.message})` +
+        `${isRetryable ? ' — 다음 후보 모델로 재시도합니다.' : ''}`
       );
-      // 과부하(503)나 일시적 오류가 아니면(예: 인증 오류) 더 재시도해도 의미가 없어 바로 중단
-      if (!isOverloaded && status !== 429 && status !== 500) {
+      // 인증 오류(401/403) 등 재시도해도 의미 없는 오류만 즉시 중단
+      if (!isRetryable) {
         console.error('[gemini] 재시도 불가능한 오류, 규칙 기반 문장으로 대체합니다:', err.response?.data || err.message);
         return null;
       }
