@@ -99,12 +99,15 @@ async function generateSajuNarrative(sajuComputed) {
         `${endpointFor(model)}?key=${GEMINI_API_KEY}`,
         {
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 2048 },
+          generationConfig: { maxOutputTokens: 4096 },
         },
         { headers: { 'Content-Type': 'application/json' }, timeout: 20_000 }
       );
 
-      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const candidate = response.data?.candidates?.[0];
+      const text = candidate?.content?.parts?.[0]?.text;
+      console.log(`[gemini] ${model} finishReason=${candidate?.finishReason}, 응답 글자수=${text ? text.length : 0}`);
+
       if (text && text.trim()) {
         return text.trim();
       }
