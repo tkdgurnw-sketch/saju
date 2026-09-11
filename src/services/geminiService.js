@@ -10,8 +10,16 @@ const axios = require('axios');
 require('dotenv').config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// 기본 모델이 일시적으로 과부하(503)일 때를 대비해 순서대로 재시도할 후보 모델 목록
+const GEMINI_MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+].filter((m, idx, arr) => arr.indexOf(m) === idx); // 중복 제거
+
+function endpointFor(model) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
 
 /**
  * 계산된 사주 데이터를 사람이 읽기 좋은 프롬프트로 정리한다.
@@ -83,29 +91,40 @@ async function generateSajuNarrative(sajuComputed) {
     return null;
   }
 
-  try {
-    const prompt = buildPrompt(sajuComputed);
+  const prompt = buildPrompt(sajuComputed);
 
-    const response = await axios.post(
-      `${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`,
-      {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 800 },
-      },
-      { headers: { 'Content-Type': 'application/json' }, timeout: 20_000 }
-    );
+  for (const model of GEMINI_MODEL_CANDIDATES) {
+    try {
+      const response = await axios.post(
+        `${endpointFor(model)}?key=${GEMINI_API_KEY}`,
+        {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 800 },
+        },
+        { headers: { 'Content-Type': 'application/json' }, timeout: 20_000 }
+      );
 
-    const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text || !text.trim()) {
-      console.warn('[gemini] 응답에 텍스트가 없어 규칙 기반 문장으로 대체합니다.');
-      return null;
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text && text.trim()) {
+        return text.trim();
+      }
+      console.warn(`[gemini] ${model} 응답에 텍스트가 없어 다음 후보로 재시도합니다.`);
+    } catch (err) {
+      const status = err.response?.status;
+      const isOverloaded = status === 503 || err.response?.data?.error?.status === 'UNAVAILABLE';
+      console.warn(
+        `[gemini] ${model} 호출 실패(${status || err.message})${isOverloaded ? ' — 과부하, 다음 후보 모델로 재시도합니다.' : ''}`
+      );
+      // 과부하(503)나 일시적 오류가 아니면(예: 인증 오류) 더 재시도해도 의미가 없어 바로 중단
+      if (!isOverloaded && status !== 429 && status !== 500) {
+        console.error('[gemini] 재시도 불가능한 오류, 규칙 기반 문장으로 대체합니다:', err.response?.data || err.message);
+        return null;
+      }
     }
-
-    return text.trim();
-  } catch (err) {
-    console.error('[gemini] 호출 실패, 규칙 기반 문장으로 대체합니다:', err.response?.data || err.message);
-    return null;
   }
+
+  console.error('[gemini] 모든 후보 모델이 실패해 규칙 기반 문장으로 대체합니다.');
+  return null;
 }
 
 module.exports = { generateSajuNarrative };
