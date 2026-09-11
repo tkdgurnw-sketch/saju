@@ -99,7 +99,7 @@ async function generateSajuNarrative(sajuComputed) {
         `${endpointFor(model)}?key=${GEMINI_API_KEY}`,
         {
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 800 },
+          generationConfig: { maxOutputTokens: 2048 },
         },
         { headers: { 'Content-Type': 'application/json' }, timeout: 20_000 }
       );
