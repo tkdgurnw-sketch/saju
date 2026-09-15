@@ -1,8 +1,23 @@
 const sharp = require('sharp');
-const fs = require('fs/promises');
-const path = require('path');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const WEBP_QUALITY = 85;
+
+// --- R2 (S3 호환) 클라이언트 설정 -------------------------------------
+// R2는 S3 API와 호환되므로 AWS SDK의 S3Client를 그대로 사용한다.
+// region은 R2에서 의미 없는 값이라 관례상 'auto'를 사용한다.
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT, // 예: https://<accountId>.r2.cloudflarestorage.com
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
+
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
+// 끝에 슬래시가 붙어 있으면 제거해서 URL 조립 시 중복 슬래시를 방지한다.
+const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
 
 /**
  * 2x2 그리드 이미지를 U1(좌상)~U4(우하) 4장으로 크롭한다.
@@ -59,26 +74,45 @@ async function processProviderResult(providerResult) {
 }
 
 /**
- * 로컬 디스크에 저장 (실제 서비스에서는 S3 등 클라우드 스토리지 업로드 스트림으로 교체)
- * DB에는 파일명만 저장하고, 실제 공개 URL은 라우트에서 조립한다 (index.js의 express.static과 짝을 이룸).
+ * Cloudflare R2에 업로드한다.
+ * DB에는 이제 "파일명"이 아니라 완전한 공개 URL을 저장한다.
+ * (기존 로컬 디스크 버전과 달리, index.js의 /images 정적 서빙에 더 이상 의존하지 않는다.)
+ *
  * @param {Record<string, Buffer|null>} quadrants
  * @param {string} filePrefix
- * @param {string} outputDir
- * @returns {Promise<Record<string, string|null>>} 저장된 파일명(U1~U4)
+ * @param {string} outputDir 더 이상 사용하지 않지만 호출부 호환을 위해 인자만 유지 (R2 내 "폴더" 접두사로 활용)
+ * @returns {Promise<Record<string, string|null>>} 저장된 공개 URL(U1~U4)
  */
 async function persistQuadrants(quadrants, filePrefix, outputDir) {
-  await fs.mkdir(outputDir, { recursive: true });
+  if (!R2_BUCKET_NAME || !R2_PUBLIC_URL) {
+    throw new Error('R2_BUCKET_NAME / R2_PUBLIC_URL 환경변수가 설정되지 않았습니다.');
+  }
+
+  // outputDir을 R2 내부 "폴더" 경로처럼 사용 (예: saju-visualizations/xxx_U1.webp)
+  const folder = outputDir ? outputDir.replace(/^\/+|\/+$/g, '') : '';
   const result = {};
 
-  for (const [key, buf] of Object.entries(quadrants)) {
-    if (!buf) {
-      result[key] = null;
-      continue;
-    }
-    const fileName = `${filePrefix}_${key}.webp`;
-    await fs.writeFile(path.join(outputDir, fileName), buf);
-    result[key] = fileName; // 실서비스에서는 여기서 CDN URL로 치환
-  }
+  await Promise.all(
+    Object.entries(quadrants).map(async ([key, buf]) => {
+      if (!buf) {
+        result[key] = null;
+        return;
+      }
+      const fileName = `${filePrefix}_${key}.webp`;
+      const objectKey = folder ? `${folder}/${fileName}` : fileName;
+
+      await r2Client.send(
+        new PutObjectCommand({
+          Bucket: R2_BUCKET_NAME,
+          Key: objectKey,
+          Body: buf,
+          ContentType: 'image/webp',
+        })
+      );
+
+      result[key] = `${R2_PUBLIC_URL}/${objectKey}`;
+    })
+  );
 
   return result;
 }
