@@ -13,16 +13,29 @@ const r2Client = new S3Client({
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
-  // 최신 AWS SDK v3는 기본적으로 요청에 플렉시블 체크섬(CRC32 등)을 자동으로 붙이는데,
-  // R2는 이 방식을 완전히 지원하지 않아 "signature mismatch" 오류가 난다.
-  // 필요할 때만 체크섬을 계산하도록 낮춰서 R2와의 호환성 문제를 해결한다.
-  requestChecksumCalculation: 'WHEN_REQUIRED',
-  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 // 끝에 슬래시가 붙어 있으면 제거해서 URL 조립 시 중복 슬래시를 방지한다.
 const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
+
+// --- 임시 디버그 로그: Railway 컨테이너가 실제로 보는 값 확인용 (문제 해결 후 제거) ---
+console.log('[R2 DEBUG] ENDPOINT =', process.env.R2_ENDPOINT);
+console.log('[R2 DEBUG] BUCKET =', R2_BUCKET_NAME);
+console.log('[R2 DEBUG] PUBLIC_URL =', R2_PUBLIC_URL);
+console.log(
+  '[R2 DEBUG] ACCESS_KEY_ID prefix =',
+  (process.env.R2_ACCESS_KEY_ID || '').slice(0, 6),
+  '| length =',
+  (process.env.R2_ACCESS_KEY_ID || '').length,
+  '(정상이면 32)'
+);
+console.log(
+  '[R2 DEBUG] SECRET_ACCESS_KEY length =',
+  (process.env.R2_SECRET_ACCESS_KEY || '').length,
+  '(정상이면 64)'
+);
+// --- 디버그 로그 끝 ---
 
 /**
  * 2x2 그리드 이미지를 U1(좌상)~U4(우하) 4장으로 크롭한다.
