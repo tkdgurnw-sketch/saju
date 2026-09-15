@@ -7,7 +7,9 @@ const imageProvider = require('./imageProvider');
 const { processProviderResult, persistQuadrants } = require('./imageProcessor');
 
 const DAILY_TTL_DAYS = Number(process.env.DAILY_IMAGE_TTL_DAYS || 7);
-const OUTPUT_DIR = process.env.LOCAL_OUTPUT_DIR || './storage/cropped';
+// Cloudflare R2로 전환된 이후, 이 값은 로컬 디스크 경로가 아니라
+// R2 버킷 내부에서 이미지를 묶어두는 "폴더 이름"으로 사용된다.
+const OUTPUT_DIR = process.env.LOCAL_OUTPUT_DIR || 'saju-visualizations';
 
 /**
  * 용신 판정 결과에 오행별 방위·색상·길한 숫자를 덧붙인다. (element가 없으면 그대로 반환)
@@ -213,7 +215,7 @@ async function createSajuVisualization(input) {
   // 3. 크롭/webp 변환
   const quadrants = await processProviderResult(providerResult);
 
-  // 4. 저장 (로컬 → 실서비스에서는 S3 스트림 업로드로 교체)
+  // 4. 저장 (Cloudflare R2) — persistQuadrants가 완전한 공개 URL을 반환한다.
   const filePrefix = `${userId}_${sajuType}_${uuidv4().slice(0, 8)}`;
   const savedPaths = await persistQuadrants(quadrants, filePrefix, OUTPUT_DIR);
 

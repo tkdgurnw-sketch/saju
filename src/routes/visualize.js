@@ -56,9 +56,11 @@ router.post('/visualize', async (req, res) => {
       analysisSummary, analysisDetails,
     });
 
-    // 저장된 파일명을 실제 접속 가능한 공개 URL로 조립 (index.js의 /images 정적 서빙과 짝을 이룸)
-    const baseUrl = `${req.protocol}://${req.get('host')}/images`;
-    const toUrl = (fileName) => (fileName ? `${baseUrl}/${fileName}` : null);
+    // Cloudflare R2로 전환된 이후, image_path_u1~u4는 imageProcessor.js의
+    // persistQuadrants()에서 이미 완전한 공개 URL(https://pub-xxxx.r2.dev/...)로
+    // 채워져 저장된다. 따라서 여기서 /images 경로를 다시 조립할 필요가 없다.
+    // (예전: 파일명만 저장 → 여기서 baseUrl + 파일명으로 조립)
+    const toUrl = (storedValue) => storedValue || null;
 
     return res.status(200).json({
       success: true,
