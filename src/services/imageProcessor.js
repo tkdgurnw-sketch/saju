@@ -13,6 +13,11 @@ const r2Client = new S3Client({
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
+  // 최신 AWS SDK v3는 기본적으로 요청에 플렉시블 체크섬(CRC32 등)을 자동으로 붙이는데,
+  // R2는 이 방식을 완전히 지원하지 않아 "signature mismatch" 오류가 난다.
+  // 필요할 때만 체크섬을 계산하도록 낮춰서 R2와의 호환성 문제를 해결한다.
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
