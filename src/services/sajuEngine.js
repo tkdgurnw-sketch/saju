@@ -425,6 +425,85 @@ function getDaewoon(birthDate, gender, fourPillars, referenceDate) {
   };
 }
 
+/**
+ * 생애 전체 대운의 흐름을 계산한다.
+ * 대운수(daewoonNumber)를 시작 나이로 10년 단위 구간을 periodsCount개 만들고,
+ * 각 구간마다 그 10년(나이 기준) 동안의 세운(년운) 목록도 함께 계산해 붙인다.
+ * (즉 "대운 흐름표 + 각 대운을 클릭하면 보이는 세운 목록"을 한 번에 만들 수 있는 데이터)
+ *
+ * @param {Date} birthDate
+ * @param {'M'|'F'} gender
+ * @param {object} fourPillars - getFourPillars() 결과
+ * @param {Date} referenceDate - "현재 활성 대운"을 표시하기 위한 기준일(보통 오늘)
+ * @param {number} [periodsCount=9] - 몇 번째 대운까지 만들지 (9면 대운수+80세까지 커버)
+ */
+function getDaewoonTimeline(birthDate, gender, fourPillars, referenceDate, periodsCount = 9) {
+  const yearStemIndex = fourPillars.year.stemIndex;
+  const isYangYearStem = yearStemIndex % 2 === 0;
+  const forward = (gender === 'M' && isYangYearStem) || (gender === 'F' && !isYangYearStem);
+
+  const { prevTerm, nextTerm } = findSolarTermBoundary(birthDate);
+  const targetTermDate = forward ? nextTerm.date : prevTerm.date;
+  const daysToTerm = Math.abs(daysBetween(birthDate, targetTermDate));
+  let daewoonNumber = Math.round(daysToTerm / 3);
+  if (daewoonNumber < 1) daewoonNumber = 1;
+
+  const monthPosition = positionOf(fourPillars.month.stemIndex, fourPillars.month.branchIndex);
+  const direction = forward ? 1 : -1;
+  const dayStemIndex = fourPillars.day.stemIndex;
+  const birthYear = birthDate.getFullYear();
+
+  // "오늘(referenceDate)" 기준 현재 활성 대운 구간을 getDaewoon과 동일한 방식으로 계산
+  let ageYearsToday = referenceDate.getFullYear() - birthDate.getFullYear();
+  const birthdayPassed =
+    referenceDate.getMonth() > birthDate.getMonth() ||
+    (referenceDate.getMonth() === birthDate.getMonth() && referenceDate.getDate() >= birthDate.getDate());
+  if (!birthdayPassed) ageYearsToday -= 1;
+  let currentPeriodIndex = 0;
+  if (ageYearsToday >= daewoonNumber) {
+    currentPeriodIndex = 1 + Math.floor((ageYearsToday - daewoonNumber) / 10);
+  }
+
+  const periods = [];
+  for (let p = 1; p <= periodsCount; p++) {
+    const position = mod(monthPosition + p * direction, 60);
+    const { stemIndex, branchIndex } = pillarFromIndex60(position);
+    const startAge = daewoonNumber + (p - 1) * 10;
+
+    // 이 대운 구간(10년) 동안의 세운(년운) 목록
+    const seyun = [];
+    for (let i = 0; i < 10; i++) {
+      const age = startAge + i;
+      const year = birthYear + age;
+      const yStemIndex = mod(year - 4, 10);
+      const yBranchIndex = mod(year - 4, 12);
+      seyun.push({
+        year,
+        age,
+        stemIndex: yStemIndex,
+        branchIndex: yBranchIndex,
+        label: pillarLabel(yStemIndex, yBranchIndex),
+        tenGodStem: tenGod(dayStemIndex, yStemIndex),
+        tenGodBranch: tenGodOfBranch(dayStemIndex, yBranchIndex),
+      });
+    }
+
+    periods.push({
+      periodIndex: p,
+      startAge,
+      stemIndex,
+      branchIndex,
+      label: pillarLabel(stemIndex, branchIndex),
+      tenGodStem: tenGod(dayStemIndex, stemIndex),
+      tenGodBranch: tenGodOfBranch(dayStemIndex, branchIndex),
+      isCurrent: p === currentPeriodIndex,
+      seyun,
+    });
+  }
+
+  return { forward, daewoonNumber, periods };
+}
+
 /** 십성 기반 관계 판정: 세운/일운 등의 간지가 일간(day master)에게 미치는 영향 */
 function judgeFortune(otherStemElement, dayMasterElement) {
   if (CONTROLS[otherStemElement] === dayMasterElement) return '흉운'; // 관살: 나를 극함
@@ -1265,6 +1344,7 @@ function interpret(birthDate, gender, today = new Date()) {
   const dayMasterElement = STEM_ELEMENT[fourPillars.day.stemIndex];
 
   const daewoon = getDaewoon(birthDate, gender, fourPillars, today);
+  const daewoonTimeline = getDaewoonTimeline(birthDate, gender, fourPillars, today);
   const yearPillarToday = getYearPillar(today);
   const monthPillarToday = getMonthPillar(today);
   const dayPillarToday = getDayPillar(today);
@@ -1325,6 +1405,7 @@ function interpret(birthDate, gender, today = new Date()) {
         ? `아직 첫 대운(만 ${daewoon.daewoonNumber}세부터) 이전입니다.`
         : `${daewoon.forward ? '순행' : '역행'} 대운, 만 ${daewoon.daewoonNumber}세부터 10년 주기로 흐릅니다.`,
     },
+    daewoonTimeline,
     seyun: {
       ...yearPillarToday,
       label: pillarLabel(yearPillarToday.stemIndex, yearPillarToday.branchIndex),
@@ -1346,6 +1427,7 @@ function interpret(birthDate, gender, today = new Date()) {
 module.exports = {
   getFourPillars,
   getDaewoon,
+  getDaewoonTimeline,
   interpret,
   tenGod,
   findInteractions,

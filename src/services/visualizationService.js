@@ -7,9 +7,7 @@ const imageProvider = require('./imageProvider');
 const { processProviderResult, persistQuadrants } = require('./imageProcessor');
 
 const DAILY_TTL_DAYS = Number(process.env.DAILY_IMAGE_TTL_DAYS || 7);
-// Cloudflare R2로 전환된 이후, 이 값은 로컬 디스크 경로가 아니라
-// R2 버킷 내부에서 이미지를 묶어두는 "폴더 이름"으로 사용된다.
-const OUTPUT_DIR = process.env.LOCAL_OUTPUT_DIR || 'saju-visualizations';
+const OUTPUT_DIR = process.env.LOCAL_OUTPUT_DIR || './storage/cropped';
 
 /**
  * 용신 판정 결과에 오행별 방위·색상·길한 숫자를 덧붙인다. (element가 없으면 그대로 반환)
@@ -100,6 +98,35 @@ async function createSajuVisualization(input) {
           gan: { han: sajuComputed.daewoon.label.hanja[0], kor: sajuComputed.daewoon.label.korean[0], element: sajuComputed.daewoon.label.stemElement },
           ji: { han: sajuComputed.daewoon.label.hanja[1], kor: sajuComputed.daewoon.label.korean[1], element: sajuComputed.daewoon.label.branchElement },
         },
+      },
+      daewoon_timeline: {
+        daewoon_number: sajuComputed.daewoonTimeline.daewoonNumber,
+        forward: sajuComputed.daewoonTimeline.forward,
+        periods: sajuComputed.daewoonTimeline.periods.map((p) => ({
+          period_index: p.periodIndex,
+          start_age: p.startAge,
+          is_current: p.isCurrent,
+          gan: {
+            han: p.label.hanja[0], kor: p.label.korean[0],
+            element: p.label.stemElement, ten_god: p.tenGodStem,
+          },
+          ji: {
+            han: p.label.hanja[1], kor: p.label.korean[1],
+            element: p.label.branchElement, ten_god: p.tenGodBranch,
+          },
+          seyun: p.seyun.map((y) => ({
+            year: y.year,
+            age: y.age,
+            gan: {
+              han: y.label.hanja[0], kor: y.label.korean[0],
+              element: y.label.stemElement, ten_god: y.tenGodStem,
+            },
+            ji: {
+              han: y.label.hanja[1], kor: y.label.korean[1],
+              element: y.label.branchElement, ten_god: y.tenGodBranch,
+            },
+          })),
+        })),
       },
       gyeokguk: {
         name: sajuComputed.gyeokguk.name,
@@ -215,7 +242,7 @@ async function createSajuVisualization(input) {
   // 3. 크롭/webp 변환
   const quadrants = await processProviderResult(providerResult);
 
-  // 4. 저장 (Cloudflare R2) — persistQuadrants가 완전한 공개 URL을 반환한다.
+  // 4. 저장 (로컬 → 실서비스에서는 S3 스트림 업로드로 교체)
   const filePrefix = `${userId}_${sajuType}_${uuidv4().slice(0, 8)}`;
   const savedPaths = await persistQuadrants(quadrants, filePrefix, OUTPUT_DIR);
 
