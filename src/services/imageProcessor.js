@@ -19,24 +19,22 @@ const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 // 끝에 슬래시가 붙어 있으면 제거해서 URL 조립 시 중복 슬래시를 방지한다.
 const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
 
-// --- 임시 디버그 로그: Railway 컨테이너가 실제로 보는 값 확인용 (문제 해결 후 제거) ---
-console.log('[R2 DEBUG] Node version =', process.version);
-console.log('[R2 DEBUG] ENDPOINT =', process.env.R2_ENDPOINT);
-console.log('[R2 DEBUG] BUCKET =', R2_BUCKET_NAME);
-console.log('[R2 DEBUG] PUBLIC_URL =', R2_PUBLIC_URL);
-console.log(
-  '[R2 DEBUG] ACCESS_KEY_ID prefix =',
-  (process.env.R2_ACCESS_KEY_ID || '').slice(0, 6),
-  '| length =',
-  (process.env.R2_ACCESS_KEY_ID || '').length,
-  '(정상이면 32)'
-);
-console.log(
-  '[R2 DEBUG] SECRET_ACCESS_KEY length =',
-  (process.env.R2_SECRET_ACCESS_KEY || '').length,
-  '(정상이면 64)'
-);
-// --- 디버그 로그 끝 ---
+/**
+ * R2(S3) 오브젝트 키에 한글 등 비-ASCII 문자가 섞이면 서명(SignatureDoesNotMatch) 오류가
+ * 발생하는 것을 확인했다 (2026-09-16 디버깅으로 재현·확인됨: 영문 키는 성공, 한글 포함 키는
+ * 동일 조건에서 100% 실패). 그래서 실제 저장 파일명에는 영문/숫자/일부 기호만 남기고,
+ * 그 외(한글 등)는 전부 제거한다. 화면에 보이는 이름이나 DB에 저장되는 사용자 정보에는
+ * 영향이 없고, 오직 R2에 올라가는 "파일명"만 안전하게 정제한다.
+ * @param {string} part
+ */
+function sanitizeKeyPart(part) {
+  const cleaned = String(part)
+    .replace(/[^\x00-\x7F]/g, '') // 한글 등 비-ASCII 문자 제거
+    .replace(/[^A-Za-z0-9._-]/g, '_') // 남은 특수문자/공백은 밑줄로
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return cleaned || 'x';
+}
 
 /**
  * 2x2 그리드 이미지를 U1(좌상)~U4(우하) 4장으로 크롭한다.
@@ -108,7 +106,10 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
   }
 
   // outputDir을 R2 내부 "폴더" 경로처럼 사용 (예: saju-visualizations/xxx_U1.webp)
-  const folder = outputDir ? outputDir.replace(/^\/+|\/+$/g, '') : '';
+  const folder = outputDir
+    ? outputDir.replace(/^\/+|\/+$/g, '').split('/').map(sanitizeKeyPart).join('/')
+    : '';
+  const safeFilePrefix = sanitizeKeyPart(filePrefix);
   const result = {};
 
   await Promise.all(
@@ -117,10 +118,8 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
         result[key] = null;
         return;
       }
-      const fileName = `${filePrefix}_${key}.webp`;
+      const fileName = `${safeFilePrefix}_${key}.webp`;
       const objectKey = folder ? `${folder}/${fileName}` : fileName;
-
-      console.log('[R2 DEBUG] objectKey =', JSON.stringify(objectKey), '| bufBytes =', buf.length);
 
       await r2Client.send(
         new PutObjectCommand({

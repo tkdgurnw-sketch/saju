@@ -37,10 +37,29 @@ const client = new S3Client({
         ContentType: 'text/plain',
       })
     );
-    console.log('✅ 성공! 업로드가 정상적으로 됐습니다.');
+    console.log('✅ 성공! (영문 키) 업로드가 정상적으로 됐습니다.');
     console.log(res);
   } catch (err) {
-    console.log('❌ 실패했습니다.');
+    console.log('❌ 실패했습니다. (영문 키)');
+    console.error(err);
+  }
+
+  // --- 실제 실패한 요청과 동일한 패턴(한글 포함 키)으로 재현 테스트 ---
+  try {
+    const koreanKey = './storage/cropped/web_홍길동_1789540713204_DAILY_9d057bf0_U1.webp';
+    console.log('한글 포함 키 테스트:', koreanKey);
+    const res2 = await client.send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: koreanKey,
+        Body: Buffer.from('한글 키 테스트'),
+        ContentType: 'text/plain',
+      })
+    );
+    console.log('✅ 성공! (한글 포함 키) 업로드가 정상적으로 됐습니다.');
+    console.log(res2);
+  } catch (err) {
+    console.log('❌ 실패했습니다. (한글 포함 키)');
     console.error(err);
   }
 })();
