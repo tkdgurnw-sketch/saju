@@ -121,6 +121,13 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
       const fileName = `${safeFilePrefix}_${key}.webp`;
       const objectKey = folder ? `${folder}/${fileName}` : fileName;
 
+      console.log(
+        '[R2 DEBUG] rawFilePrefix =', JSON.stringify(filePrefix),
+        '| safeFilePrefix =', JSON.stringify(safeFilePrefix),
+        '| objectKey =', JSON.stringify(objectKey),
+        '| isAscii =', /^[\x00-\x7F]*$/.test(objectKey)
+      );
+
       await r2Client.send(
         new PutObjectCommand({
           Bucket: R2_BUCKET_NAME,
