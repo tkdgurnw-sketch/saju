@@ -1,7 +1,5 @@
 const sharp = require('sharp');
-const https = require('https');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const WEBP_QUALITY = 85;
 
@@ -20,23 +18,6 @@ const r2Client = new S3Client({
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 // 끝에 슬래시가 붙어 있으면 제거해서 URL 조립 시 중복 슬래시를 방지한다.
 const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
-
-/**
- * R2(S3) 오브젝트 키에 한글 등 비-ASCII 문자가 섞이면 서명(SignatureDoesNotMatch) 오류가
- * 발생하는 것을 확인했다 (2026-09-16 디버깅으로 재현·확인됨: 영문 키는 성공, 한글 포함 키는
- * 동일 조건에서 100% 실패). 그래서 실제 저장 파일명에는 영문/숫자/일부 기호만 남기고,
- * 그 외(한글 등)는 전부 제거한다. 화면에 보이는 이름이나 DB에 저장되는 사용자 정보에는
- * 영향이 없고, 오직 R2에 올라가는 "파일명"만 안전하게 정제한다.
- * @param {string} part
- */
-function sanitizeKeyPart(part) {
-  const cleaned = String(part)
-    .replace(/[^\x00-\x7F]/g, '') // 한글 등 비-ASCII 문자 제거
-    .replace(/[^A-Za-z0-9._-]/g, '_') // 남은 특수문자/공백은 밑줄로
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return cleaned || 'x';
-}
 
 /**
  * 2x2 그리드 이미지를 U1(좌상)~U4(우하) 4장으로 크롭한다.
@@ -93,45 +74,6 @@ async function processProviderResult(providerResult) {
 }
 
 /**
- * presigned URL로 버퍼를 PUT 업로드한다. fetch 대신 Node 내장 https 모듈을 직접 써서
- * Content-Length를 명시적으로 지정하고, 그 외 헤더는 최소한으로만 보낸다.
- * (fetch/undici가 자동으로 붙이는 헤더나 청크 전송 방식이 R2 쪽 서명 검증과
- * 충돌하는 것으로 의심되어, 가장 단순하고 예측 가능한 방식으로 우회한다.)
- * @param {string} url
- * @param {Buffer} buf
- * @returns {Promise<void>}
- */
-function putBufferViaHttps(url, buf) {
-  return new Promise((resolve, reject) => {
-    const { hostname, pathname, search } = new URL(url);
-    const req = https.request(
-      {
-        hostname,
-        path: pathname + search,
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'image/webp',
-          'Content-Length': buf.length,
-        },
-      },
-      (res) => {
-        let body = '';
-        res.on('data', (chunk) => { body += chunk; });
-        res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve();
-          } else {
-            reject(new Error(`R2 업로드 실패 (${res.statusCode}): ${body.slice(0, 300)}`));
-          }
-        });
-      }
-    );
-    req.on('error', reject);
-    req.end(buf);
-  });
-}
-
-/**
  * Cloudflare R2에 업로드한다.
  * DB에는 이제 "파일명"이 아니라 완전한 공개 URL을 저장한다.
  * (기존 로컬 디스크 버전과 달리, index.js의 /images 정적 서빙에 더 이상 의존하지 않는다.)
@@ -147,10 +89,7 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
   }
 
   // outputDir을 R2 내부 "폴더" 경로처럼 사용 (예: saju-visualizations/xxx_U1.webp)
-  const folder = outputDir
-    ? outputDir.replace(/^\/+|\/+$/g, '').split('/').map(sanitizeKeyPart).join('/')
-    : '';
-  const safeFilePrefix = sanitizeKeyPart(filePrefix);
+  const folder = outputDir ? outputDir.replace(/^\/+|\/+$/g, '') : '';
   const result = {};
 
   await Promise.all(
@@ -159,23 +98,17 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
         result[key] = null;
         return;
       }
-      const fileName = `${safeFilePrefix}_${key}.webp`;
+      const fileName = `${filePrefix}_${key}.webp`;
       const objectKey = folder ? `${folder}/${fileName}` : fileName;
 
-      // send()로 직접 PutObjectCommand를 실행하는 대신, presigned URL을 만들어
-      // 순수 HTTP PUT으로 업로드한다. ContentType은 서명에 포함시키지 않는다
-      // (서명에 포함되면 실제 요청 헤더와 완전히 똑같아야 하는데, 그 과정에서
-      // 미세한 불일치가 생겨 SignatureDoesNotMatch가 나는 것으로 의심됨).
-      const presignedUrl = await getSignedUrl(
-        r2Client,
+      await r2Client.send(
         new PutObjectCommand({
           Bucket: R2_BUCKET_NAME,
           Key: objectKey,
-        }),
-        { expiresIn: 300 }
+          Body: buf,
+          ContentType: 'image/webp',
+        })
       );
-
-      await putBufferViaHttps(presignedUrl, buf);
 
       result[key] = `${R2_PUBLIC_URL}/${objectKey}`;
     })
