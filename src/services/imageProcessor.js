@@ -20,6 +20,7 @@ const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 const R2_PUBLIC_URL = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
 
 // --- 임시 디버그 로그: Railway 컨테이너가 실제로 보는 값 확인용 (문제 해결 후 제거) ---
+console.log('[R2 DEBUG] Node version =', process.version);
 console.log('[R2 DEBUG] ENDPOINT =', process.env.R2_ENDPOINT);
 console.log('[R2 DEBUG] BUCKET =', R2_BUCKET_NAME);
 console.log('[R2 DEBUG] PUBLIC_URL =', R2_PUBLIC_URL);
@@ -118,6 +119,8 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
       }
       const fileName = `${filePrefix}_${key}.webp`;
       const objectKey = folder ? `${folder}/${fileName}` : fileName;
+
+      console.log('[R2 DEBUG] objectKey =', JSON.stringify(objectKey), '| bufBytes =', buf.length);
 
       await r2Client.send(
         new PutObjectCommand({
