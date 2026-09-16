@@ -1,5 +1,6 @@
 const sharp = require('sharp');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const WEBP_QUALITY = 85;
 
@@ -121,21 +122,30 @@ async function persistQuadrants(quadrants, filePrefix, outputDir) {
       const fileName = `${safeFilePrefix}_${key}.webp`;
       const objectKey = folder ? `${folder}/${fileName}` : fileName;
 
-      console.log(
-        '[R2 DEBUG] rawFilePrefix =', JSON.stringify(filePrefix),
-        '| safeFilePrefix =', JSON.stringify(safeFilePrefix),
-        '| objectKey =', JSON.stringify(objectKey),
-        '| isAscii =', /^[\x00-\x7F]*$/.test(objectKey)
-      );
-
-      await r2Client.send(
+      // send()로 직접 PutObjectCommand를 실행하는 대신, presigned URL을 만들어
+      // 순수 HTTP PUT으로 업로드한다. (SDK의 send()가 내부적으로 붙이는 재시도·체크섬
+      // 헤더들이 얽혀 R2에서 SignatureDoesNotMatch가 나는 문제가 있어, 서명을
+      // URL 쿼리에 담는 더 단순한 방식으로 우회한다.)
+      const presignedUrl = await getSignedUrl(
+        r2Client,
         new PutObjectCommand({
           Bucket: R2_BUCKET_NAME,
           Key: objectKey,
-          Body: buf,
           ContentType: 'image/webp',
-        })
+        }),
+        { expiresIn: 300 }
       );
+
+      const putRes = await fetch(presignedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/webp' },
+        body: buf,
+      });
+
+      if (!putRes.ok) {
+        const errText = await putRes.text().catch(() => '');
+        throw new Error(`R2 업로드 실패 (${putRes.status}): ${errText.slice(0, 300)}`);
+      }
 
       result[key] = `${R2_PUBLIC_URL}/${objectKey}`;
     })
